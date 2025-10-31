@@ -1,0 +1,90 @@
+import type { Handler } from '@netlify/functions';
+import { getDbPool } from './db';
+
+const handler: Handler = async (event, context) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
+  }
+  
+  const pool = getDbPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Create Products Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "productName" VARCHAR(255) NOT NULL,
+        category VARCHAR(255),
+        "purchaseDate" DATE NOT NULL,
+        "purchasePrice" NUMERIC(10, 2) NOT NULL,
+        "sellingPrice" NUMERIC(10, 2) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        notes TEXT,
+        "invoiceId" VARCHAR(255),
+        "purchaseOrderId" VARCHAR(255),
+        "trackingType" VARCHAR(50) NOT NULL,
+        imei VARCHAR(255) UNIQUE,
+        quantity INTEGER NOT NULL,
+        "customerName" VARCHAR(255)
+      );
+    `);
+    
+    // Create Customers Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NOT NULL
+      );
+    `);
+    
+    // Create Categories Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL UNIQUE
+      );
+    `);
+    
+    // TODO: Add CREATE TABLE statements for suppliers, invoices, and purchase_orders here
+    // when you are ready to migrate them.
+
+    // Seed initial data if tables are empty
+    const { rows: categoryRows } = await client.query('SELECT COUNT(*) FROM categories');
+    if (parseInt(categoryRows[0].count, 10) === 0) {
+      await client.query(`
+        INSERT INTO categories (name) VALUES 
+        ('Smartphones'), ('Laptops'), ('Accessories'), ('Tablets');
+      `);
+    }
+
+    const { rows: customerRows } = await client.query('SELECT COUNT(*) FROM customers');
+    if (parseInt(customerRows[0].count, 10) === 0) {
+      await client.query(`
+        INSERT INTO customers (name, phone) VALUES 
+        ('Walk-in Customer', 'N/A');
+      `);
+    }
+
+    await client.query('COMMIT');
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Database initialized successfully.' }),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Database Setup Error:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Failed to initialize database.' }),
+    };
+  } finally {
+    client.release();
+  }
+};
+
+export { handler };

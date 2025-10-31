@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Product, ProductStatus, NewProductInfo, Invoice, InvoiceItem, PurchaseOrder, Customer, Category, Supplier, PurchaseOrderStatus } from './types';
-import { useLocalStorage } from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
 import ProductManagementList from './components/ProductManagementList';
@@ -22,21 +21,24 @@ import SupplierForm from './components/SupplierForm';
 import LoginScreen from './components/LoginScreen';
 import { downloadPdf } from './utils/pdfGenerator';
 import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, LogoutIcon } from './components/icons';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
 const App: React.FC = () => {
   // --- Data Management ---
-  // Products are now managed via API and React state.
   const [products, setProducts] = useState<Product[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(true);
-  const [productsError, setProductsError] = useState<string | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [needsDbSetup, setNeedsDbSetup] = useState<boolean>(false);
+  const [isSettingUpDb, setIsSettingUpDb] = useState<boolean>(false);
 
-  // TODO: Migrate the following data to your database using the same pattern as products.
+  // TODO: Migrate the following data to your database using the same pattern as products, customers, and categories.
   const [invoices, setInvoices] = useLocalStorage<Invoice[]>('inventory-invoices', []);
   const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>('inventory-purchase-orders', []);
-  const [customers, setCustomers] = useLocalStorage<Customer[]>('inventory-customers', []);
-  const [categories, setCategories] = useLocalStorage<Category[]>('inventory-categories', []);
   const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>('inventory-suppliers', []);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -63,29 +65,51 @@ const App: React.FC = () => {
     setIsAuthenticated(sessionActive);
   }, []);
   
-  // Effect to fetch products from the database
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setIsLoadingProducts(true);
-        setProductsError(null);
-        const response = await fetch('/.netlify/functions/get-products');
-        if (!response.ok) {
-          throw new Error('Failed to fetch products from the server.');
-        }
-        const data: Product[] = await response.json();
-        setProducts(data);
-      } catch (err: any) {
-        setProductsError(err.message || 'An unexpected error occurred while fetching products.');
-      } finally {
-        setIsLoadingProducts(false);
-      }
-    };
+  // Effect to fetch all data from the database
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setDataError(null);
+      setNeedsDbSetup(false);
 
-    if (isAuthenticated) {
-      fetchProducts();
+      const [productsRes, customersRes, categoriesRes] = await Promise.all([
+          fetch('/.netlify/functions/get-products'),
+          fetch('/.netlify/functions/get-customers'),
+          fetch('/.netlify/functions/get-categories'),
+      ]);
+
+      if (productsRes.status === 404) {
+          const errorData = await productsRes.json();
+          if (errorData.code === 'DB_TABLE_NOT_FOUND') {
+              setNeedsDbSetup(true);
+              return;
+          }
+      }
+
+      if (!productsRes.ok || !customersRes.ok || !categoriesRes.ok) {
+        throw new Error('Failed to fetch data from the server.');
+      }
+      
+      const productsData: Product[] = await productsRes.json();
+      const customersData: Customer[] = await customersRes.json();
+      const categoriesData: Category[] = await categoriesRes.json();
+      
+      setProducts(productsData);
+      setCustomers(customersData);
+      setCategories(categoriesData);
+
+    } catch (err: any) {
+      setDataError(err.message || 'An unexpected error occurred while fetching data.');
+    } finally {
+      setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated, fetchData]);
 
   useEffect(() => {
     if (documentToPrint) {
@@ -98,10 +122,26 @@ const App: React.FC = () => {
         downloadPdf(id, fileName).then(() => {
           setDocumentToPrint(null);
         });
-      }, 100); // Small delay to ensure the component has rendered
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [documentToPrint]);
+
+  const handleInitializeDb = async () => {
+    try {
+        setIsSettingUpDb(true);
+        setDataError(null);
+        const response = await fetch('/.netlify/functions/setup-database', { method: 'POST' });
+        if (!response.ok) {
+            throw new Error('Failed to initialize the database.');
+        }
+        await fetchData();
+    } catch (err: any) {
+        setDataError(err.message || 'An unexpected error occurred during database setup.');
+    } finally {
+        setIsSettingUpDb(false);
+    }
+  };
 
   const handleLogin = (password: string): boolean => {
     if (password === 'admin123') {
@@ -115,6 +155,12 @@ const App: React.FC = () => {
   const handleLogout = () => {
     sessionStorage.removeItem('inventory-pro-session');
     setIsAuthenticated(false);
+    setProducts([]);
+    setCustomers([]);
+    setCategories([]);
+    setInvoices([]);
+    setPurchaseOrders([]);
+    setSuppliers([]);
   };
 
   const handleDownloadInvoice = (invoice: Invoice) => {
@@ -136,7 +182,7 @@ const App: React.FC = () => {
     if (details.trackingType === 'imei') {
         newProducts = details.imeis.map(imei => ({
             ...productData,
-            id: `${new Date().toISOString()}-${imei}`,
+            id: crypto.randomUUID(),
             imei: imei,
             trackingType: 'imei',
             quantity: 1,
@@ -144,10 +190,9 @@ const App: React.FC = () => {
             purchaseOrderId,
         }));
     } else {
-        const id = `${new Date().toISOString()}-QTY-${Math.random()}`;
         newProducts.push({
             ...productData,
-            id,
+            id: crypto.randomUUID(),
             trackingType: 'quantity',
             quantity: details.quantity,
             status: ProductStatus.Available,
@@ -161,17 +206,16 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newProducts),
         });
-        if (!response.ok) {
-            throw new Error('Failed to save new products to the database.');
-        }
-        setProducts(prevProducts => [...prevProducts, ...newProducts]);
+        if (!response.ok) throw new Error('Failed to save new products.');
+        const addedProducts = await response.json();
+        setProducts(prevProducts => [...prevProducts, ...addedProducts]);
+        return addedProducts;
     } catch (error) {
         console.error('Error adding products:', error);
         alert('Error: Could not save products to the database.');
+        return [];
     }
-
-    return newProducts;
-  }, [setProducts]);
+  }, []);
 
   const handleOpenEditModal = (product: Product) => {
     setProductToEdit(product);
@@ -185,11 +229,8 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedProduct),
         });
-        if (!response.ok) {
-            throw new Error('Failed to update product on the server.');
-        }
+        if (!response.ok) throw new Error('Failed to update product.');
         const savedProduct = await response.json();
-        
         setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
         setEditModalOpen(false);
         setProductToEdit(null);
@@ -201,7 +242,6 @@ const App: React.FC = () => {
   
   const handleDeleteProduct = (productId: string) => {
     // TODO: Implement API call to a new Netlify Function 'delete-product'.
-    // The function should accept a product ID and run a DELETE SQL query.
     if (window.confirm('Are you sure you want to permanently delete this product? This action cannot be undone.')) {
         const productToDelete = products.find(p => p.id === productId);
         if (productToDelete && productToDelete.status === ProductStatus.Sold) {
@@ -213,149 +253,164 @@ const App: React.FC = () => {
   };
 
    const handleArchiveProduct = (productId: string) => {
-        // TODO: This should call the 'update-product' function to change the status.
-        setProducts(prev => prev.map(p => p.id === productId ? { ...p, status: ProductStatus.Archived } : p));
+        const productToArchive = products.find(p => p.id === productId);
+        if (productToArchive) {
+            handleUpdateProduct({ ...productToArchive, status: ProductStatus.Archived });
+        }
     };
 
     const handleUnarchiveProduct = (productId: string) => {
-        // TODO: This should call the 'update-product' function to change the status.
-        setProducts(prev => prev.map(p => p.id === productId ? { ...p, status: ProductStatus.Available } : p));
+        const productToUnarchive = products.find(p => p.id === productId);
+        if (productToUnarchive) {
+            handleUpdateProduct({ ...productToUnarchive, status: ProductStatus.Available });
+        }
     };
 
   const handleCreateInvoice = useCallback((customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
-    // TODO: This function needs to be rewritten to interact with the database.
-    // 1. Create a new Netlify Function `create-invoice`.
-    // 2. The function should run a database transaction to:
-    //    a. INSERT a new row into an `invoices` table.
-    //    b. INSERT rows into an `invoice_items` table.
-    //    c. UPDATE the status/quantity of the products in the `products` table.
-    // 3. The frontend should call this function and then re-fetch data if needed.
+    // TODO: Migrate to a Netlify function for transactional safety.
     const customer = customers.find(c => c.id === customerId);
-    if (!customer) {
-        alert("Customer not found.");
-        return;
-    }
+    if (!customer) return;
 
     const newInvoiceId = `INV-${Date.now()}`;
     let totalAmount = 0;
     const invoiceItems: InvoiceItem[] = [];
 
-    setProducts(prevProducts => {
-        const updatedProducts = [...prevProducts];
+    const productUpdates: Promise<any>[] = [];
 
-        for (const item of items) {
-            const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
-            if (productIndex === -1) continue;
-
-            const product = updatedProducts[productIndex];
-            
-            invoiceItems.push({
-                ...item,
-                productName: product.productName,
-                imei: product.imei
-            });
-            totalAmount += item.sellingPrice * item.quantity;
-            
-            if (product.trackingType === 'imei') {
-                updatedProducts[productIndex] = { ...product, status: ProductStatus.Sold, customerName: customer.name, invoiceId: newInvoiceId };
-            } else {
-                const newQuantity = product.quantity - item.quantity;
-                updatedProducts[productIndex] = { ...product, quantity: newQuantity, status: newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold };
-            }
+    for (const item of items) {
+        const product = products.find(p => p.id === item.productId);
+        if (!product) continue;
+        
+        invoiceItems.push({ ...item, productName: product.productName, imei: product.imei });
+        totalAmount += item.sellingPrice * item.quantity;
+        
+        let updatedProduct: Product;
+        if (product.trackingType === 'imei') {
+            updatedProduct = { ...product, status: ProductStatus.Sold, customerName: customer.name, invoiceId: newInvoiceId };
+        } else {
+            const newQuantity = product.quantity - item.quantity;
+            updatedProduct = { ...product, quantity: newQuantity, status: newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold };
         }
-        return updatedProducts;
+        productUpdates.push(handleUpdateProduct(updatedProduct));
+    }
+
+    Promise.all(productUpdates).then(() => {
+        const newInvoice: Invoice = {
+          id: newInvoiceId,
+          invoiceNumber: `#${invoices.length + 1}`,
+          customerId,
+          customerName: customer.name,
+          issueDate: new Date().toISOString(),
+          items: invoiceItems,
+          totalAmount,
+        };
+
+        setInvoices(prev => [newInvoice, ...prev]);
+        setInvoiceModalOpen(false);
+        handleDownloadInvoice(newInvoice);
     });
+  }, [customers, invoices, products]);
 
-    const newInvoice: Invoice = {
-      id: newInvoiceId,
-      invoiceNumber: `#${invoices.length + 1}`,
-      customerId,
-      customerName: customer.name,
-      issueDate: new Date().toISOString(),
-      items: invoiceItems,
-      totalAmount,
-    };
-
-    setInvoices(prev => [newInvoice, ...prev]);
-    setInvoiceModalOpen(false);
-    handleDownloadInvoice(newInvoice);
-  }, [customers, invoices, setProducts, setInvoices]);
-
- const handleCreatePurchaseOrder = useCallback((
+ const handleCreatePurchaseOrder = useCallback(async (
     poDetails: Omit<PurchaseOrder, 'id' | 'productIds' | 'totalCost' | 'supplierName' | 'issueDate'>,
     productsData: { productInfo: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number } }[]
 ) => {
-    // TODO: This function also needs to be migrated to a Netlify function.
-    // It should create a PO record and add products in a single database transaction.
+    // TODO: Migrate to a Netlify function.
     const supplier = suppliers.find(s => s.id === poDetails.supplierId);
-    if (!supplier) {
-        alert("Supplier not found.");
-        return;
-    }
+    if (!supplier) return;
 
     const poId = `PO-${Date.now()}`;
     let allNewProducts: Product[] = [];
-
-    productsData.forEach(batch => {
-        const newProductsForBatch = handleAddProducts(batch.productInfo, batch.details, poId);
+    for (const batch of productsData) {
+        const newProductsForBatch = await handleAddProducts(batch.productInfo, batch.details, poId);
         allNewProducts = [...allNewProducts, ...newProductsForBatch];
-    });
-
+    }
     const totalCost = allNewProducts.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0);
 
     const newPO: PurchaseOrder = {
-        ...poDetails,
-        id: poId,
-        supplierName: supplier.name,
+        ...poDetails, id: poId, supplierName: supplier.name,
         issueDate: new Date().toISOString(),
         productIds: allNewProducts.map(p => p.id),
         totalCost,
     };
-
     setPurchaseOrders(prev => [newPO, ...prev]);
     setPurchaseOrderModalOpen(false);
     handleDownloadPurchaseOrder(newPO);
-}, [suppliers, handleAddProducts, setPurchaseOrders]);
+}, [suppliers, handleAddProducts]);
   
   // Category Handlers
-  const handleAddCategory = (name: string) => {
+  const handleAddCategory = async (name: string) => {
     if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
         alert("Category already exists.");
-        return;
+        return undefined;
     }
-    const newCategory: Category = { id: `CAT-${Date.now()}`, name };
-    setCategories(prev => [...prev, newCategory]);
-    return newCategory;
+    try {
+        const response = await fetch('/.netlify/functions/save-category', {
+            method: 'POST',
+            body: JSON.stringify({ name }),
+        });
+        if (!response.ok) throw new Error('Failed to save category.');
+        const newCategory = await response.json();
+        setCategories(prev => [...prev, newCategory]);
+        return newCategory;
+    } catch (error) {
+        console.error(error);
+        alert('Error: Could not save category.');
+        return undefined;
+    }
   };
-  const handleDeleteCategory = (id: string) => {
+
+  const handleDeleteCategory = async (id: string) => {
     const category = categories.find(c => c.id === id);
     if (products.some(p => p.category === category?.name)) {
         alert("Cannot delete category as it is used by some products.");
         return;
     }
-    setCategories(prev => prev.filter(c => c.id !== id));
+    try {
+        await fetch('/.netlify/functions/delete-category', { method: 'DELETE', body: JSON.stringify({ id }) });
+        setCategories(prev => prev.filter(c => c.id !== id));
+    } catch (error) { console.error(error); alert('Error: Could not delete category.'); }
   };
   
   // Customer Handlers
-  const handleSaveCustomer = (customer: Omit<Customer, 'id'>) => {
-    if(customerToEdit) {
-        setCustomers(prev => prev.map(c => c.id === customerToEdit.id ? { ...customer, id: c.id } : c));
-    } else {
-        const newCustomer = { ...customer, id: `CUST-${Date.now()}`};
-        setCustomers(prev => [...prev, newCustomer]);
-    }
-    setCustomerModalOpen(false);
-    setCustomerToEdit(null);
+  const handleSaveCustomer = async (customerData: Omit<Customer, 'id'>) => {
+    const customerToSave = customerToEdit ? { ...customerData, id: customerToEdit.id } : customerData;
+    try {
+        const response = await fetch('/.netlify/functions/save-customer', {
+            method: 'POST',
+            body: JSON.stringify(customerToSave),
+        });
+        if (!response.ok) throw new Error('Failed to save customer.');
+        const savedCustomer = await response.json();
+        if (customerToEdit) {
+            setCustomers(prev => prev.map(c => c.id === savedCustomer.id ? savedCustomer : c));
+        } else {
+            setCustomers(prev => [...prev, savedCustomer]);
+        }
+        setCustomerModalOpen(false);
+        setCustomerToEdit(null);
+    } catch (error) { console.error(error); alert('Error: Could not save customer.'); }
   };
 
-  const handleAddCustomer = (name: string, phone: string): Customer | undefined => {
+  const handleAddCustomer = async (name: string, phone: string): Promise<Customer | undefined> => {
     if (customers.some(c => c.name.toLowerCase() === name.toLowerCase())) {
         alert("A customer with this name already exists.");
         return undefined;
     }
-    const newCustomer: Customer = { id: `CUST-${Date.now()}`, name, phone };
-    setCustomers(prev => [...prev, newCustomer]);
-    return newCustomer;
+    try {
+        const response = await fetch('/.netlify/functions/save-customer', {
+            method: 'POST',
+            body: JSON.stringify({ name, phone }),
+        });
+        if (!response.ok) throw new Error('Failed to save customer.');
+        const newCustomer = await response.json();
+        setCustomers(prev => [...prev, newCustomer]);
+        return newCustomer;
+    } catch (error) {
+        console.error(error);
+        alert('Error: Could not add customer.');
+        return undefined;
+    }
   };
 
   const handleOpenAddCustomerModal = () => {
@@ -363,12 +418,15 @@ const App: React.FC = () => {
     setCustomerModalOpen(true);
   };
   
-  const handleDeleteCustomer = (id: string) => {
+  const handleDeleteCustomer = async (id: string) => {
     if (invoices.some(inv => inv.customerId === id)) {
         alert("Cannot delete customer with existing invoices.");
         return;
     }
-    setCustomers(prev => prev.filter(c => c.id !== id));
+    try {
+        await fetch('/.netlify/functions/delete-customer', { method: 'DELETE', body: JSON.stringify({ id }) });
+        setCustomers(prev => prev.filter(c => c.id !== id));
+    } catch (error) { console.error(error); alert('Error: Could not delete customer.'); }
   };
   
   // Supplier Handlers
@@ -401,16 +459,9 @@ const App: React.FC = () => {
   };
 
   const filteredProducts = useMemo(() => {
-    const sourceProducts = 
-        activeTab === 'active' ? availableProducts :
-        activeTab === 'sold' ? soldProducts :
-        activeTab === 'archive' ? archivedProducts :
-        products;
-
+    const sourceProducts = activeTab === 'active' ? availableProducts : activeTab === 'sold' ? soldProducts : activeTab === 'archive' ? archivedProducts : products;
     if (!searchQuery) return sourceProducts;
-    
     const lowerCaseQuery = searchQuery.toLowerCase();
-
     return sourceProducts.filter(p =>
         (p.imei && p.imei.toLowerCase().includes(lowerCaseQuery)) ||
         p.productName.toLowerCase().includes(lowerCaseQuery) ||
@@ -424,23 +475,10 @@ const App: React.FC = () => {
     setActiveTab(tab);
   }
   
-  const totalActiveStock = useMemo(() => 
-    availableProducts.reduce((sum, p) => sum + p.quantity, 0), 
-  [availableProducts]);
-  
-  const totalSoldUnits = useMemo(() => 
-    invoices.reduce((total, invoice) => 
-      total + invoice.items.reduce((subtotal, item) => subtotal + item.quantity, 0), 
-    0),
-  [invoices]);
-
-  const totalArchivedUnits = useMemo(() =>
-    archivedProducts.reduce((sum, p) => sum + p.quantity, 0),
-  [archivedProducts]);
-
-  const totalProductLines = useMemo(() =>
-    products.reduce((sum, p) => sum + p.quantity, 0),
-  [products]);
+  const totalActiveStock = useMemo(() => availableProducts.reduce((sum, p) => sum + p.quantity, 0), [availableProducts]);
+  const totalSoldUnits = useMemo(() => invoices.reduce((total, inv) => total + inv.items.reduce((subtotal, item) => subtotal + item.quantity, 0), 0), [invoices]);
+  const totalArchivedUnits = useMemo(() => archivedProducts.reduce((sum, p) => sum + p.quantity, 0), [archivedProducts]);
+  const totalProductLines = useMemo(() => products.reduce((sum, p) => sum + p.quantity, 0), [products]);
   
   const TABS: { id: ActiveTab; label: string; count: number; color: string }[] = [
     { id: 'active', label: 'Active Inventory', count: totalActiveStock, color: 'bg-indigo-100 text-primary-text' },
@@ -459,22 +497,32 @@ const App: React.FC = () => {
 
 
   const renderContent = () => {
-    if (isLoadingProducts) {
-      return (
-        <div className="text-center py-20">
-          <p className="text-lg font-medium text-slate-600">Loading inventory from database...</p>
-        </div>
-      );
+    if (isLoading) {
+      return <div className="text-center py-20"><p className="text-lg font-medium text-slate-600">Loading inventory from database...</p></div>;
     }
-
-    if (productsError) {
+    if (dataError) {
       return (
         <div className="text-center py-20 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-lg font-semibold text-red-700">Failed to load inventory</p>
-          <p className="text-sm text-red-600 mt-2">{productsError}</p>
+          <p className="text-lg font-semibold text-red-700">Failed to load data</p>
+          <p className="text-sm text-red-600 mt-2">{dataError}</p>
           <p className="text-xs text-slate-500 mt-4">Please ensure your database is running and the `DATABASE_URL` is correctly set in your Netlify environment variables.</p>
         </div>
       );
+    }
+    if (needsDbSetup) {
+        return (
+            <div className="text-center py-20 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                <h2 className="text-xl font-semibold text-blue-800">Welcome to Inventory Pro!</h2>
+                <p className="text-slate-600 mt-2 max-w-md mx-auto">Your database is connected, but the necessary tables haven't been created yet. Click the button below to set them up automatically.</p>
+                <button
+                    onClick={handleInitializeDb}
+                    disabled={isSettingUpDb}
+                    className="mt-6 inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
+                >
+                    {isSettingUpDb ? 'Initializing...' : 'Initialize Database'}
+                </button>
+            </div>
+        );
     }
 
     switch(activeTab) {
@@ -592,7 +640,7 @@ const App: React.FC = () => {
       </main>
 
       <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add New Product Batch">
-        <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
+        <ProductForm onAddProducts={handleAddProducts as any} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
       </Modal>
 
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="Create New Invoice">
@@ -644,7 +692,6 @@ const App: React.FC = () => {
         />
       </Modal>
 
-      {/* PDF Generation Templates (positioned off-screen) */}
       <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -1 }}>
         {documentToPrint?.type === 'invoice' && <InvoicePDF invoice={documentToPrint.data as Invoice} />}
         {documentToPrint?.type === 'po' && <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />}

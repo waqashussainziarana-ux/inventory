@@ -4,12 +4,8 @@ import { getDbPool } from './db';
 export const handler: Handler = async (event, context) => {
   try {
     const pool = getDbPool();
-    // Note: The double quotes around field names are necessary if your
-    // table columns were created with camelCase names in PostgreSQL.
     const { rows } = await pool.query('SELECT * FROM products ORDER BY "purchaseDate" DESC');
 
-    // The 'pg' library can return numeric types as strings. We parse them back to numbers
-    // to ensure data consistency with the frontend types.
     const products = rows.map(row => ({
       ...row,
       purchasePrice: parseFloat(row.purchasePrice),
@@ -22,8 +18,17 @@ export const handler: Handler = async (event, context) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(products),
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Database Error:', error);
+
+    // Specific error code for "undefined_table" in PostgreSQL
+    if (error.code === '42P01') {
+      return {
+        statusCode: 404, // Use 404 to indicate the resource (table) is not found
+        body: JSON.stringify({ error: 'Database not initialized. Products table missing.', code: 'DB_TABLE_NOT_FOUND' }),
+      };
+    }
+
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Failed to fetch products.' }),
