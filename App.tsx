@@ -78,6 +78,7 @@ const App: React.FC = () => {
           fetch('/.netlify/functions/get-categories'),
       ]);
 
+      // Check for DB setup first, as this is a specific, recoverable state
       if (productsRes.status === 404) {
           const errorData = await productsRes.json();
           if (errorData.code === 'DB_TABLE_NOT_FOUND') {
@@ -86,8 +87,20 @@ const App: React.FC = () => {
           }
       }
 
+      // Handle other potential errors from any of the fetches
       if (!productsRes.ok || !customersRes.ok || !categoriesRes.ok) {
-        throw new Error('Failed to fetch data from the server.');
+          let errorMsg = "Failed to fetch data from the server.";
+          if (!productsRes.ok) {
+              const err = await productsRes.json();
+              errorMsg = `Products: ${err.error || 'Unknown error'}`;
+          } else if (!customersRes.ok) {
+              const err = await customersRes.json();
+              errorMsg = `Customers: ${err.error || 'Unknown error'}`;
+          } else if (!categoriesRes.ok) {
+              const err = await categoriesRes.json();
+              errorMsg = `Categories: ${err.error || 'Unknown error'}`;
+          }
+        throw new Error(errorMsg);
       }
       
       const productsData: Product[] = await productsRes.json();
@@ -503,7 +516,7 @@ const App: React.FC = () => {
     if (dataError) {
       return (
         <div className="text-center py-20 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-lg font-semibold text-red-700">Failed to load data</p>
+          <p className="text-lg font-semibold text-red-700">Failed to load inventory</p>
           <p className="text-sm text-red-600 mt-2">{dataError}</p>
           <p className="text-xs text-slate-500 mt-4">Please ensure your database is running and the `DATABASE_URL` is correctly set in your Netlify environment variables.</p>
         </div>

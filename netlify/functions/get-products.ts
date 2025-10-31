@@ -19,7 +19,8 @@ export const handler: Handler = async (event, context) => {
       body: JSON.stringify(products),
     };
   } catch (error: any) {
-    console.error('Database Error:', error);
+    // Log the full error for debugging in Netlify
+    console.error('Full Database Error in get-products:', error);
 
     // Specific error code for "undefined_table" in PostgreSQL
     if (error.code === '42P01') {
@@ -29,9 +30,11 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
+    const errorMessage = `Database query failed. Please check connection and logs. Code: ${error.code || 'N/A'}`;
+
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to fetch products.' }),
+      body: JSON.stringify({ error: errorMessage, details: error.message }),
     };
   }
 };
