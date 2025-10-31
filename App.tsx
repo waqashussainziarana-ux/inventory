@@ -21,7 +21,6 @@ import SupplierForm from './components/SupplierForm';
 import LoginScreen from './components/LoginScreen';
 import { downloadPdf } from './utils/pdfGenerator';
 import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, LogoutIcon } from './components/icons';
-import { useLocalStorage } from './hooks/useLocalStorage';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
@@ -30,16 +29,14 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [needsDbSetup, setNeedsDbSetup] = useState<boolean>(false);
   const [isSettingUpDb, setIsSettingUpDb] = useState<boolean>(false);
-
-  // TODO: Migrate the following data to your database using the same pattern as products, customers, and categories.
-  const [invoices, setInvoices] = useLocalStorage<Invoice[]>('inventory-invoices', []);
-  const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>('inventory-purchase-orders', []);
-  const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>('inventory-suppliers', []);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('active');
@@ -72,44 +69,37 @@ const App: React.FC = () => {
       setDataError(null);
       setNeedsDbSetup(false);
 
-      const [productsRes, customersRes, categoriesRes] = await Promise.all([
-          fetch('/.netlify/functions/get-products'),
-          fetch('/.netlify/functions/get-customers'),
-          fetch('/.netlify/functions/get-categories'),
-      ]);
+      const endpoints = [
+        'get-products', 'get-customers', 'get-categories', 
+        'get-suppliers', 'get-invoices', 'get-purchase-orders'
+      ];
+      const responses = await Promise.all(endpoints.map(ep => fetch(`/.netlify/functions/${ep}`)));
 
-      // Check for DB setup first, as this is a specific, recoverable state
-      if (productsRes.status === 404) {
-          const errorData = await productsRes.json();
-          if (errorData.code === 'DB_TABLE_NOT_FOUND') {
-              setNeedsDbSetup(true);
-              return;
+      for (const res of responses) {
+          if (res.status === 404) {
+              const errorData = await res.json();
+              if (errorData.code === 'DB_TABLE_NOT_FOUND') {
+                  setNeedsDbSetup(true);
+                  return;
+              }
           }
-      }
-
-      // Handle other potential errors from any of the fetches
-      if (!productsRes.ok || !customersRes.ok || !categoriesRes.ok) {
-          let errorMsg = "Failed to fetch data from the server.";
-          if (!productsRes.ok) {
-              const err = await productsRes.json();
-              errorMsg = `Products: ${err.error || 'Unknown error'}`;
-          } else if (!customersRes.ok) {
-              const err = await customersRes.json();
-              errorMsg = `Customers: ${err.error || 'Unknown error'}`;
-          } else if (!categoriesRes.ok) {
-              const err = await categoriesRes.json();
-              errorMsg = `Categories: ${err.error || 'Unknown error'}`;
+          if (!res.ok) {
+              const err = await res.json();
+              throw new Error(`Failed to fetch ${res.url}: ${err.error || 'Unknown error'}`);
           }
-        throw new Error(errorMsg);
       }
       
-      const productsData: Product[] = await productsRes.json();
-      const customersData: Customer[] = await customersRes.json();
-      const categoriesData: Category[] = await categoriesRes.json();
+      const [
+          productsData, customersData, categoriesData, 
+          suppliersData, invoicesData, purchaseOrdersData
+      ] = await Promise.all(responses.map(res => res.json()));
       
       setProducts(productsData);
       setCustomers(customersData);
       setCategories(categoriesData);
+      setSuppliers(suppliersData);
+      setInvoices(invoicesData);
+      setPurchaseOrders(purchaseOrdersData);
 
     } catch (err: any) {
       setDataError(err.message || 'An unexpected error occurred while fetching data.');
@@ -190,26 +180,22 @@ const App: React.FC = () => {
   const archivedProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Archived), [products]);
 
   // CRUD Handlers
-  const handleAddProducts = useCallback(async (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }, purchaseOrderId?: string) => {
-    let newProducts: Product[] = [];
+  const handleAddProducts = useCallback(async (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => {
+    let newProducts: Omit<Product, 'id'>[] = [];
     if (details.trackingType === 'imei') {
         newProducts = details.imeis.map(imei => ({
             ...productData,
-            id: crypto.randomUUID(),
             imei: imei,
             trackingType: 'imei',
             quantity: 1,
             status: ProductStatus.Available,
-            purchaseOrderId,
         }));
     } else {
         newProducts.push({
             ...productData,
-            id: crypto.randomUUID(),
             trackingType: 'quantity',
             quantity: details.quantity,
             status: ProductStatus.Available,
-            purchaseOrderId,
         });
     }
 
@@ -217,7 +203,7 @@ const App: React.FC = () => {
         const response = await fetch('/.netlify/functions/add-products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newProducts),
+            body: JSON.stringify(newProducts.map(p => ({...p, id: crypto.randomUUID()}))),
         });
         if (!response.ok) throw new Error('Failed to save new products.');
         const addedProducts = await response.json();
@@ -279,77 +265,50 @@ const App: React.FC = () => {
         }
     };
 
-  const handleCreateInvoice = useCallback((customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
-    // TODO: Migrate to a Netlify function for transactional safety.
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return;
-
-    const newInvoiceId = `INV-${Date.now()}`;
-    let totalAmount = 0;
-    const invoiceItems: InvoiceItem[] = [];
-
-    const productUpdates: Promise<any>[] = [];
-
-    for (const item of items) {
-        const product = products.find(p => p.id === item.productId);
-        if (!product) continue;
+  const handleCreateInvoice = useCallback(async (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
+      try {
+        const response = await fetch('/.netlify/functions/create-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customerId, items }),
+        });
+        if (!response.ok) throw new Error('Failed to create invoice.');
+        const newInvoice = await response.json();
         
-        invoiceItems.push({ ...item, productName: product.productName, imei: product.imei });
-        totalAmount += item.sellingPrice * item.quantity;
-        
-        let updatedProduct: Product;
-        if (product.trackingType === 'imei') {
-            updatedProduct = { ...product, status: ProductStatus.Sold, customerName: customer.name, invoiceId: newInvoiceId };
-        } else {
-            const newQuantity = product.quantity - item.quantity;
-            updatedProduct = { ...product, quantity: newQuantity, status: newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold };
-        }
-        productUpdates.push(handleUpdateProduct(updatedProduct));
-    }
+        // This is a full data refresh, which is safer after a complex transaction.
+        // For a more optimized UI, you could selectively update state.
+        await fetchData();
 
-    Promise.all(productUpdates).then(() => {
-        const newInvoice: Invoice = {
-          id: newInvoiceId,
-          invoiceNumber: `#${invoices.length + 1}`,
-          customerId,
-          customerName: customer.name,
-          issueDate: new Date().toISOString(),
-          items: invoiceItems,
-          totalAmount,
-        };
-
-        setInvoices(prev => [newInvoice, ...prev]);
         setInvoiceModalOpen(false);
         handleDownloadInvoice(newInvoice);
-    });
-  }, [customers, invoices, products]);
+      } catch (error) {
+          console.error('Error creating invoice:', error);
+          alert('Error: Could not create the invoice.');
+      }
+  }, [fetchData]);
 
  const handleCreatePurchaseOrder = useCallback(async (
     poDetails: Omit<PurchaseOrder, 'id' | 'productIds' | 'totalCost' | 'supplierName' | 'issueDate'>,
     productsData: { productInfo: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number } }[]
 ) => {
-    // TODO: Migrate to a Netlify function.
-    const supplier = suppliers.find(s => s.id === poDetails.supplierId);
-    if (!supplier) return;
+    try {
+        const response = await fetch('/.netlify/functions/create-purchase-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ poDetails, productsData }),
+        });
+        if (!response.ok) throw new Error('Failed to create purchase order.');
+        const { po: newPO } = await response.json();
 
-    const poId = `PO-${Date.now()}`;
-    let allNewProducts: Product[] = [];
-    for (const batch of productsData) {
-        const newProductsForBatch = await handleAddProducts(batch.productInfo, batch.details, poId);
-        allNewProducts = [...allNewProducts, ...newProductsForBatch];
+        await fetchData(); // Refresh all data for consistency
+
+        setPurchaseOrderModalOpen(false);
+        handleDownloadPurchaseOrder(newPO);
+    } catch (error) {
+        console.error('Error creating purchase order:', error);
+        alert('Error: Could not create the purchase order.');
     }
-    const totalCost = allNewProducts.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0);
-
-    const newPO: PurchaseOrder = {
-        ...poDetails, id: poId, supplierName: supplier.name,
-        issueDate: new Date().toISOString(),
-        productIds: allNewProducts.map(p => p.id),
-        totalCost,
-    };
-    setPurchaseOrders(prev => [newPO, ...prev]);
-    setPurchaseOrderModalOpen(false);
-    handleDownloadPurchaseOrder(newPO);
-}, [suppliers, handleAddProducts]);
+}, [fetchData]);
   
   // Category Handlers
   const handleAddCategory = async (name: string) => {
@@ -443,19 +402,32 @@ const App: React.FC = () => {
   };
   
   // Supplier Handlers
- const handleSaveSupplier = (supplierData: Omit<Supplier, 'id'>) => {
-    if (supplierToEdit) {
-        setSuppliers(prev => prev.map(s => s.id === supplierToEdit.id ? { ...supplierData, id: s.id } : s));
-    } else {
-        if (suppliers.some(s => s.name.toLowerCase() === supplierData.name.toLowerCase())) {
-            alert("A supplier with this name already exists.");
-            return;
+ const handleSaveSupplier = async (supplierData: Omit<Supplier, 'id'>) => {
+    const supplierToSave = supplierToEdit ? { ...supplierData, id: supplierToEdit.id } : supplierData;
+    try {
+        const response = await fetch('/.netlify/functions/save-supplier', {
+            method: 'POST',
+            body: JSON.stringify(supplierToSave),
+        });
+        if (!response.ok) throw new Error('Failed to save supplier.');
+        const savedSupplier = await response.json();
+        if (supplierToEdit) {
+            setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
+        } else {
+             // Handle case where supplier might already exist from another session
+            const supplierExists = suppliers.some(s => s.id === savedSupplier.id);
+            if (supplierExists) {
+                setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
+            } else {
+                setSuppliers(prev => [...prev, savedSupplier]);
+            }
         }
-        const newSupplier = { ...supplierData, id: `SUP-${Date.now()}` };
-        setSuppliers(prev => [...prev, newSupplier]);
+        setSupplierModalOpen(false);
+        setSupplierToEdit(null);
+    } catch (error) {
+        console.error(error);
+        alert('Error: Could not save supplier.');
     }
-    setSupplierModalOpen(false);
-    setSupplierToEdit(null);
   };
 
   const handleOpenAddSupplierModal = () => {
@@ -463,12 +435,15 @@ const App: React.FC = () => {
     setSupplierModalOpen(true);
   };
 
-  const handleDeleteSupplier = (id: string) => {
+  const handleDeleteSupplier = async (id: string) => {
     if (purchaseOrders.some(po => po.supplierId === id)) {
         alert("Cannot delete supplier with existing purchase orders.");
         return;
     }
-    setSuppliers(prev => prev.filter(s => s.id !== id));
+     try {
+        await fetch('/.netlify/functions/delete-supplier', { method: 'DELETE', body: JSON.stringify({ id }) });
+        setSuppliers(prev => prev.filter(s => s.id !== id));
+    } catch (error) { console.error(error); alert('Error: Could not delete supplier.'); }
   };
 
   const filteredProducts = useMemo(() => {
@@ -653,7 +628,7 @@ const App: React.FC = () => {
       </main>
 
       <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add New Product Batch">
-        <ProductForm onAddProducts={handleAddProducts as any} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
+        <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
       </Modal>
 
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="Create New Invoice">

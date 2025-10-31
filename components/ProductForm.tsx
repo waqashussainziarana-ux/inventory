@@ -6,11 +6,11 @@ import { CloseIcon, BarcodeIcon, PlusIcon } from './icons';
 declare const onscan: any;
 
 interface ProductFormProps {
-  onAddProducts: (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => void;
+  onAddProducts: (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => void | Promise<any>;
   existingImeis: Set<string>;
   onClose: () => void;
   categories: Category[];
-  onAddCategory: (name: string) => Category | undefined;
+  onAddCategory: (name: string) => Promise<Category | undefined>;
 }
 
 const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis, onClose, categories, onAddCategory }) => {
@@ -143,9 +143,9 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
     }
   };
 
-  const handleAddNewCategory = () => {
+  const handleAddNewCategory = async () => {
     if (newCategoryName.trim()) {
-        const newCategory = onAddCategory(newCategoryName.trim());
+        const newCategory = await onAddCategory(newCategoryName.trim());
         if (newCategory) {
             setFormData(prev => ({...prev, category: newCategory.name}));
         }
@@ -204,7 +204,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
     setBulkImeisInput('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (trackingType === 'imei' && imeis.length === 0) {
@@ -225,7 +225,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
         ? { trackingType: 'imei' as const, imeis }
         : { trackingType: 'quantity' as const, quantity: Number(quantity) };
 
-    onAddProducts(formData, details);
+    await onAddProducts(formData, details);
     onClose();
   };
   

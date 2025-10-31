@@ -7,7 +7,7 @@ interface InvoiceFormProps {
   customers: Customer[];
   onCreateInvoice: (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => void;
   onClose: () => void;
-  onAddNewCustomer: (name: string, phone: string) => Customer | undefined;
+  onAddNewCustomer: (name: string, phone: string) => Promise<Customer | undefined>;
 }
 
 const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers, onCreateInvoice, onClose, onAddNewCustomer }) => {
@@ -28,7 +28,8 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
   }, [availableProducts, searchTerm]);
 
   const invoiceItems = useMemo(() => {
-    const items: (InvoiceItem & { available: number })[] = [];
+    // Fix: Add trackingType to the item type definition
+    const items: (InvoiceItem & { available: number; trackingType: 'imei' | 'quantity' })[] = [];
     for (const [productId, quantity] of selectedItems.entries()) {
         const product = availableProducts.find(p => p.id === productId);
         if (product) {
@@ -39,6 +40,8 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
                 productName: product.productName,
                 imei: product.imei,
                 available: product.quantity,
+                // Fix: Add trackingType from the product to the invoice item
+                trackingType: product.trackingType,
             });
         }
     }
@@ -71,9 +74,9 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
       });
   };
 
-  const handleAddNewCustomer = () => {
+  const handleAddNewCustomer = async () => {
     if (newCustomerName.trim() && newCustomerPhone.trim()) {
-        const newCustomer = onAddNewCustomer(newCustomerName.trim(), newCustomerPhone.trim());
+        const newCustomer = await onAddNewCustomer(newCustomerName.trim(), newCustomerPhone.trim());
         if (newCustomer) {
             setSelectedCustomerId(newCustomer.id);
         }

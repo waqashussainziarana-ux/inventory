@@ -13,7 +13,7 @@ interface PurchaseOrderFormProps {
     suppliers: Supplier[];
     onSaveSupplier: (supplier: Omit<Supplier, 'id'>) => void;
     categories: Category[];
-    onAddCategory: (name: string) => Category | undefined;
+    onAddCategory: (name: string) => Promise<Category | undefined>;
     existingImeis: Set<string>;
     onCreatePurchaseOrder: (
         poDetails: { supplierId: string, poNumber: string, status: PurchaseOrderStatus, notes?: string },
@@ -63,7 +63,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = (props) => {
     };
 
     if (currentView === 'add_product') {
-        return <ProductForm {...props} onAddProducts={handleAddProductBatch as any} onClose={() => setCurrentView('main')} />;
+        return <ProductForm {...props} onAddProducts={handleAddProductBatch} onClose={() => setCurrentView('main')} />;
     }
     
     if (currentView === 'add_supplier') {
