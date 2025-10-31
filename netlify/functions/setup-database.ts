@@ -11,6 +11,47 @@ const handler: Handler = async (event, context) => {
   try {
     await sql.transaction([
       sql`
+        CREATE TABLE IF NOT EXISTS suppliers (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL UNIQUE,
+          email VARCHAR(255),
+          phone VARCHAR(50)
+        );
+      `,
+      sql`
+        CREATE TABLE IF NOT EXISTS customers (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL,
+          phone VARCHAR(50) NOT NULL
+        );
+      `,
+      sql`
+        CREATE TABLE IF NOT EXISTS categories (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL UNIQUE
+        );
+      `,
+      sql`
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          "poNumber" VARCHAR(255) NOT NULL UNIQUE,
+          "supplierId" UUID REFERENCES suppliers(id),
+          "issueDate" DATE NOT NULL,
+          "totalCost" NUMERIC(10, 2) NOT NULL,
+          status VARCHAR(50) NOT NULL,
+          notes TEXT
+        );
+      `,
+      sql`
+        CREATE TABLE IF NOT EXISTS invoices (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          "invoiceNumber" VARCHAR(255) NOT NULL UNIQUE,
+          "customerId" UUID REFERENCES customers(id),
+          "issueDate" DATE NOT NULL,
+          "totalAmount" NUMERIC(10, 2) NOT NULL
+        );
+      `,
+      sql`
         CREATE TABLE IF NOT EXISTS products (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           "productName" VARCHAR(255) NOT NULL,
@@ -29,16 +70,14 @@ const handler: Handler = async (event, context) => {
         );
       `,
       sql`
-        CREATE TABLE IF NOT EXISTS customers (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          name VARCHAR(255) NOT NULL,
-          phone VARCHAR(50) NOT NULL
-        );
-      `,
-      sql`
-        CREATE TABLE IF NOT EXISTS categories (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          name VARCHAR(255) NOT NULL UNIQUE
+        CREATE TABLE IF NOT EXISTS invoice_items (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE,
+            "productId" UUID, 
+            "productName" VARCHAR(255) NOT NULL,
+            imei VARCHAR(255),
+            quantity INTEGER NOT NULL,
+            "sellingPrice" NUMERIC(10, 2) NOT NULL
         );
       `,
     ]);
@@ -57,6 +96,14 @@ const handler: Handler = async (event, context) => {
       await sql`
         INSERT INTO customers (name, phone) VALUES 
         ('Walk-in Customer', 'N/A');
+      `;
+    }
+
+    const [supplierCount] = await sql`SELECT COUNT(*) FROM suppliers`;
+    if (Number(supplierCount.count) === 0) {
+      await sql`
+        INSERT INTO suppliers (name, email, phone) VALUES 
+        ('Default Supplier', 'contact@default.com', '123-456-7890');
       `;
     }
     
