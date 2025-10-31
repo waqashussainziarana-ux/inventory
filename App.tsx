@@ -19,8 +19,9 @@ import CustomerList from './components/CustomerList';
 import CustomerForm from './components/CustomerForm';
 import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
+import LoginScreen from './components/LoginScreen';
 import { downloadPdf } from './utils/pdfGenerator';
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon } from './components/icons';
+import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, LogoutIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [categories, setCategories] = useLocalStorage<Category[]>('inventory-categories', []);
   const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>('inventory-suppliers', []);
 
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('active');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -51,6 +53,11 @@ const App: React.FC = () => {
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
 
   useEffect(() => {
+    const sessionActive = sessionStorage.getItem('inventory-pro-session') === 'true';
+    setIsAuthenticated(sessionActive);
+  }, []);
+
+  useEffect(() => {
     if (documentToPrint) {
       const timer = setTimeout(() => {
         const id = documentToPrint.type === 'invoice' ? 'invoice-pdf' : 'po-pdf';
@@ -65,6 +72,22 @@ const App: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [documentToPrint]);
+
+  const handleLogin = (password: string): boolean => {
+    // NOTE: This is a simple password for a local, single-user application.
+    // Do not use this method for multi-user or web-facing applications.
+    if (password === 'admin123') {
+        sessionStorage.setItem('inventory-pro-session', 'true');
+        setIsAuthenticated(true);
+        return true;
+    }
+    return false;
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('inventory-pro-session');
+    setIsAuthenticated(false);
+  };
 
   const handleDownloadInvoice = (invoice: Invoice) => {
     setDocumentToPrint({ type: 'invoice', data: invoice });
@@ -395,12 +418,19 @@ const App: React.FC = () => {
     }
   }
 
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <header className="bg-slate-100/80 backdrop-blur-lg border-b border-slate-200 sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <h1 className="text-2xl font-bold text-slate-800">Inventory Pro</h1>
           <div className="flex items-center gap-3 flex-wrap justify-center">
+            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-slate-200 rounded-lg shadow-sm hover:bg-slate-300 focus:outline-none">
+              <LogoutIcon className="w-5 h-5" /> Logout
+            </button>
             <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
                 <ClipboardDocumentListIcon className="w-5 h-5" /> Create PO
             </button>
