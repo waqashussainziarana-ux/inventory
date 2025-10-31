@@ -26,7 +26,13 @@ import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, Logo
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
 const App: React.FC = () => {
-  const [products, setProducts] = useLocalStorage<Product[]>('inventory-products', []);
+  // --- Data Management ---
+  // Products are now managed via API and React state.
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+
+  // TODO: Migrate the following data to your database using the same pattern as products.
   const [invoices, setInvoices] = useLocalStorage<Invoice[]>('inventory-invoices', []);
   const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>('inventory-purchase-orders', []);
   const [customers, setCustomers] = useLocalStorage<Customer[]>('inventory-customers', []);
@@ -56,6 +62,30 @@ const App: React.FC = () => {
     const sessionActive = sessionStorage.getItem('inventory-pro-session') === 'true';
     setIsAuthenticated(sessionActive);
   }, []);
+  
+  // Effect to fetch products from the database
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setIsLoadingProducts(true);
+        setProductsError(null);
+        const response = await fetch('/.netlify/functions/get-products');
+        if (!response.ok) {
+          throw new Error('Failed to fetch products from the server.');
+        }
+        const data: Product[] = await response.json();
+        setProducts(data);
+      } catch (err: any) {
+        setProductsError(err.message || 'An unexpected error occurred while fetching products.');
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchProducts();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (documentToPrint) {
@@ -74,8 +104,6 @@ const App: React.FC = () => {
   }, [documentToPrint]);
 
   const handleLogin = (password: string): boolean => {
-    // NOTE: This is a simple password for a local, single-user application.
-    // Do not use this method for multi-user or web-facing applications.
     if (password === 'admin123') {
         sessionStorage.setItem('inventory-pro-session', 'true');
         setIsAuthenticated(true);
@@ -103,7 +131,7 @@ const App: React.FC = () => {
   const archivedProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Archived), [products]);
 
   // CRUD Handlers
-  const handleAddProducts = useCallback((productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }, purchaseOrderId?: string) => {
+  const handleAddProducts = useCallback(async (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }, purchaseOrderId?: string) => {
     let newProducts: Product[] = [];
     if (details.trackingType === 'imei') {
         newProducts = details.imeis.map(imei => ({
@@ -127,7 +155,21 @@ const App: React.FC = () => {
         });
     }
 
-    setProducts(prevProducts => [...prevProducts, ...newProducts]);
+    try {
+        const response = await fetch('/.netlify/functions/add-products', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newProducts),
+        });
+        if (!response.ok) {
+            throw new Error('Failed to save new products to the database.');
+        }
+        setProducts(prevProducts => [...prevProducts, ...newProducts]);
+    } catch (error) {
+        console.error('Error adding products:', error);
+        alert('Error: Could not save products to the database.');
+    }
+
     return newProducts;
   }, [setProducts]);
 
@@ -136,13 +178,30 @@ const App: React.FC = () => {
     setEditModalOpen(true);
   };
 
-  const handleUpdateProduct = (updatedProduct: Product) => {
-    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
-    setEditModalOpen(false);
-    setProductToEdit(null);
+  const handleUpdateProduct = async (updatedProduct: Product) => {
+    try {
+        const response = await fetch('/.netlify/functions/update-product', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedProduct),
+        });
+        if (!response.ok) {
+            throw new Error('Failed to update product on the server.');
+        }
+        const savedProduct = await response.json();
+        
+        setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
+        setEditModalOpen(false);
+        setProductToEdit(null);
+    } catch (error) {
+        console.error('Error updating product:', error);
+        alert('Error: Could not update the product in the database.');
+    }
   };
   
   const handleDeleteProduct = (productId: string) => {
+    // TODO: Implement API call to a new Netlify Function 'delete-product'.
+    // The function should accept a product ID and run a DELETE SQL query.
     if (window.confirm('Are you sure you want to permanently delete this product? This action cannot be undone.')) {
         const productToDelete = products.find(p => p.id === productId);
         if (productToDelete && productToDelete.status === ProductStatus.Sold) {
@@ -154,14 +213,23 @@ const App: React.FC = () => {
   };
 
    const handleArchiveProduct = (productId: string) => {
+        // TODO: This should call the 'update-product' function to change the status.
         setProducts(prev => prev.map(p => p.id === productId ? { ...p, status: ProductStatus.Archived } : p));
     };
 
     const handleUnarchiveProduct = (productId: string) => {
+        // TODO: This should call the 'update-product' function to change the status.
         setProducts(prev => prev.map(p => p.id === productId ? { ...p, status: ProductStatus.Available } : p));
     };
 
   const handleCreateInvoice = useCallback((customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
+    // TODO: This function needs to be rewritten to interact with the database.
+    // 1. Create a new Netlify Function `create-invoice`.
+    // 2. The function should run a database transaction to:
+    //    a. INSERT a new row into an `invoices` table.
+    //    b. INSERT rows into an `invoice_items` table.
+    //    c. UPDATE the status/quantity of the products in the `products` table.
+    // 3. The frontend should call this function and then re-fetch data if needed.
     const customer = customers.find(c => c.id === customerId);
     if (!customer) {
         alert("Customer not found.");
@@ -217,6 +285,8 @@ const App: React.FC = () => {
     poDetails: Omit<PurchaseOrder, 'id' | 'productIds' | 'totalCost' | 'supplierName' | 'issueDate'>,
     productsData: { productInfo: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number } }[]
 ) => {
+    // TODO: This function also needs to be migrated to a Netlify function.
+    // It should create a PO record and add products in a single database transaction.
     const supplier = suppliers.find(s => s.id === poDetails.supplierId);
     if (!supplier) {
         alert("Supplier not found.");
@@ -389,6 +459,24 @@ const App: React.FC = () => {
 
 
   const renderContent = () => {
+    if (isLoadingProducts) {
+      return (
+        <div className="text-center py-20">
+          <p className="text-lg font-medium text-slate-600">Loading inventory from database...</p>
+        </div>
+      );
+    }
+
+    if (productsError) {
+      return (
+        <div className="text-center py-20 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-lg font-semibold text-red-700">Failed to load inventory</p>
+          <p className="text-sm text-red-600 mt-2">{productsError}</p>
+          <p className="text-xs text-slate-500 mt-4">Please ensure your database is running and the `DATABASE_URL` is correctly set in your Netlify environment variables.</p>
+        </div>
+      );
+    }
+
     switch(activeTab) {
         case 'active':
             return (

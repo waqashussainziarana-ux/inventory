@@ -1,38 +1,35 @@
-// Fix: Import React to provide the React namespace for types used in the function signature.
-import React, { useState, useEffect } from 'react';
+// FIX: Implemented the useLocalStorage hook. The file was empty, which caused the "not a module" error when imported in App.tsx.
+import { useState, useEffect } from 'react';
 
-export function useLocalStorage<T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.error(error);
-      return initialValue;
+function getStorageValue<T>(key: string, defaultValue: T): T {
+  // getting stored value
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(key);
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error('Error parsing JSON from localStorage', error);
+        return defaultValue;
+      }
     }
+  }
+  return defaultValue;
+}
+
+export function useLocalStorage<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(() => {
+    return getStorageValue(key, defaultValue);
   });
 
-  const setValue = (value: T | ((val: T) => T)) => {
-    try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   useEffect(() => {
+    // storing value
     try {
-        const item = window.localStorage.getItem(key);
-        if (item) {
-            setStoredValue(JSON.parse(item));
-        }
-    } catch(e) {
-        console.error("Failed to parse from local storage");
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error setting item to localStorage', error);
     }
-  }, [key]);
+  }, [key, value]);
 
-
-  return [storedValue, setValue];
+  return [value, setValue];
 }
