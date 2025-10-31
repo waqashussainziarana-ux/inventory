@@ -272,16 +272,19 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ customerId, items }),
         });
-        if (!response.ok) throw new Error('Failed to create invoice.');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.details || 'An unknown error occurred on the server.');
+        }
         const newInvoice = await response.json();
         
         await fetchData();
 
         setInvoiceModalOpen(false);
         handleDownloadInvoice(newInvoice);
-      } catch (error) {
+      } catch (error: any) {
           console.error('Error creating invoice:', error);
-          alert('Error: Could not create the invoice.');
+          alert(`Error: Could not create the invoice.\n\n${error.message}`);
       }
   }, [fetchData]);
 
@@ -295,16 +298,19 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ poDetails, productsData }),
         });
-        if (!response.ok) throw new Error('Failed to create purchase order.');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.details || 'An unknown error occurred on the server.');
+        }
         const { po: newPO } = await response.json();
 
         await fetchData(); // Refresh all data for consistency
 
         setPurchaseOrderModalOpen(false);
         handleDownloadPurchaseOrder(newPO);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating purchase order:', error);
-        alert('Error: Could not create the purchase order.');
+        alert(`Error: Could not create the purchase order.\n\n${error.message}`);
     }
 }, [fetchData]);
   

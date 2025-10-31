@@ -53,14 +53,14 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = (props) => {
     
     const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedSupplierId || productBatches.length === 0 || !poNumber.trim()) {
             alert('Please select a supplier, enter a PO number, and add at least one product batch.');
             return;
         }
         const poDetails = { supplierId: selectedSupplierId, poNumber: poNumber.trim(), status, notes };
-        onCreatePurchaseOrder(poDetails, productBatches);
+        await onCreatePurchaseOrder(poDetails, productBatches);
     };
 
     if (currentView === 'add_product') {

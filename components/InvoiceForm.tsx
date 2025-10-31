@@ -86,14 +86,14 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
   
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCustomerId || selectedItems.size === 0) {
         alert('Please select a customer and at least one product.');
         return;
     }
     const itemsToCreate = invoiceItems.map(({productId, quantity, sellingPrice}) => ({productId, quantity, sellingPrice}));
-    onCreateInvoice(selectedCustomerId, itemsToCreate);
+    await onCreateInvoice(selectedCustomerId, itemsToCreate);
   };
 
   return (

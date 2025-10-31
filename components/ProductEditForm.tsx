@@ -4,7 +4,7 @@ import { Product, ProductStatus, Category } from '../types';
 interface ProductEditFormProps {
   product: Product;
   categories: Category[];
-  onUpdateProduct: (product: Product) => void;
+  onUpdateProduct: (product: Product) => Promise<void>;
   onClose: () => void;
 }
 
@@ -32,9 +32,9 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({ product, categories, 
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateProduct(formData);
+    await onUpdateProduct(formData);
   };
 
   return (

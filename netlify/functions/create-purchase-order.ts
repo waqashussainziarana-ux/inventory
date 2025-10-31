@@ -68,7 +68,12 @@ const handler: Handler = async (event, context) => {
             });
         }
 
-        const finalPO = { ...poRow, supplierName: supplier.name, totalCost: parseFloat(poRow.totalCost), productIds: insertedProducts.map(p => p.id) };
+        const finalPO = { 
+            ...poRow, 
+            supplierName: supplier.name, 
+            totalCost: parseFloat(poRow.totalCost), 
+            productIds: insertedProducts.map(p => p.id) 
+        };
         return [{ po: finalPO, newProducts: insertedProducts }];
     });
 
@@ -78,11 +83,11 @@ const handler: Handler = async (event, context) => {
         body: JSON.stringify({ po, newProducts }),
     };
 
-  } catch (error) {
-    console.error('Database Error:', error);
+  } catch (error: any) {
+    console.error('Database Error in create-purchase-order:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to create purchase order.' }),
+      body: JSON.stringify({ error: 'Failed to create purchase order.', details: error.message }),
     };
   }
 };
