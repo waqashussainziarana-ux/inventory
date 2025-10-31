@@ -1,5 +1,6 @@
 // FIX: Implemented the useLocalStorage hook. The file was empty, which caused the "not a module" error when imported in App.tsx.
-import { useState, useEffect } from 'react';
+// FIX: Import React to be able to use React.Dispatch and React.SetStateAction types.
+import React, { useState, useEffect } from 'react';
 
 function getStorageValue<T>(key: string, defaultValue: T): T {
   // getting stored value
