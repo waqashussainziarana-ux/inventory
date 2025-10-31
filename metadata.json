@@ -1,0 +1,5 @@
+{
+  "name": "Product Inventory & IMEI Tracker",
+  "description": "A comprehensive application to manage product inventory, track unique IMEI numbers, and handle sales history. Features include adding products, searching by IMEI, archiving sold items, and data import/export.",
+  "requestFramePermissions": []
+}
