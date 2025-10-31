@@ -6,7 +6,7 @@ import { CloseIcon, BarcodeIcon, PlusIcon } from './icons';
 declare const onscan: any;
 
 interface ProductFormProps {
-  onAddProducts: (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => void | Promise<any>;
+  onAddProducts: (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => Promise<any>;
   existingImeis: Set<string>;
   onClose: () => void;
   categories: Category[];

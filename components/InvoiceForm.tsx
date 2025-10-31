@@ -5,7 +5,7 @@ import { SearchIcon, CloseIcon, PlusIcon } from './icons';
 interface InvoiceFormProps {
   availableProducts: Product[];
   customers: Customer[];
-  onCreateInvoice: (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => void;
+  onCreateInvoice: (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => Promise<void>;
   onClose: () => void;
   onAddNewCustomer: (name: string, phone: string) => Promise<Customer | undefined>;
 }
@@ -28,7 +28,6 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
   }, [availableProducts, searchTerm]);
 
   const invoiceItems = useMemo(() => {
-    // Fix: Add trackingType to the item type definition
     const items: (InvoiceItem & { available: number; trackingType: 'imei' | 'quantity' })[] = [];
     for (const [productId, quantity] of selectedItems.entries()) {
         const product = availableProducts.find(p => p.id === productId);
@@ -40,7 +39,6 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
                 productName: product.productName,
                 imei: product.imei,
                 available: product.quantity,
-                // Fix: Add trackingType from the product to the invoice item
                 trackingType: product.trackingType,
             });
         }

@@ -18,7 +18,7 @@ interface PurchaseOrderFormProps {
     onCreatePurchaseOrder: (
         poDetails: { supplierId: string, poNumber: string, status: PurchaseOrderStatus, notes?: string },
         productsData: ProductBatch[]
-    ) => void;
+    ) => Promise<void>;
     onClose: () => void;
     nextPoNumber: string;
 }
@@ -36,6 +36,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = (props) => {
     const handleAddProductBatch = (productInfo: NewProductInfo, details: ProductBatch['details']) => {
         setProductBatches(prev => [...prev, { productInfo, details }]);
         setCurrentView('main');
+        return Promise.resolve();
     };
     
     const handleSaveNewSupplier = (supplierData: Omit<Supplier, 'id'>) => {
@@ -63,7 +64,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = (props) => {
     };
 
     if (currentView === 'add_product') {
-        return <ProductForm {...props} onAddProducts={handleAddProductBatch} onClose={() => setCurrentView('main')} />;
+        return <ProductForm {...props} onAddProducts={handleAddProductBatch as any} onClose={() => setCurrentView('main')} />;
     }
     
     if (currentView === 'add_supplier') {

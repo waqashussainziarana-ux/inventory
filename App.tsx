@@ -206,15 +206,14 @@ const App: React.FC = () => {
             body: JSON.stringify(newProducts.map(p => ({...p, id: crypto.randomUUID()}))),
         });
         if (!response.ok) throw new Error('Failed to save new products.');
-        const addedProducts = await response.json();
-        setProducts(prevProducts => [...prevProducts, ...addedProducts]);
-        return addedProducts;
+        await fetchData();
+        return await response.json();
     } catch (error) {
         console.error('Error adding products:', error);
         alert('Error: Could not save products to the database.');
         return [];
     }
-  }, []);
+  }, [fetchData]);
 
   const handleOpenEditModal = (product: Product) => {
     setProductToEdit(product);
@@ -229,8 +228,9 @@ const App: React.FC = () => {
             body: JSON.stringify(updatedProduct),
         });
         if (!response.ok) throw new Error('Failed to update product.');
-        const savedProduct = await response.json();
-        setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
+        
+        await fetchData(); // Refresh all data to ensure consistency
+        
         setEditModalOpen(false);
         setProductToEdit(null);
     } catch (error) {
@@ -275,8 +275,6 @@ const App: React.FC = () => {
         if (!response.ok) throw new Error('Failed to create invoice.');
         const newInvoice = await response.json();
         
-        // This is a full data refresh, which is safer after a complex transaction.
-        // For a more optimized UI, you could selectively update state.
         await fetchData();
 
         setInvoiceModalOpen(false);
