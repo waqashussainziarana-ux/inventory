@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { getDbPool } from './db';
+import { neon } from '@netlify/neon';
 
 const handler: Handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
@@ -12,27 +12,28 @@ const handler: Handler = async (event, context) => {
       return { statusCode: 400, body: 'Bad Request: Category name is required.' };
     }
 
-    const pool = getDbPool();
-    const query = `
+    const sql = neon();
+    
+    const rows = await sql`
       INSERT INTO categories (name)
-      VALUES ($1)
+      VALUES (${name})
       ON CONFLICT (name) DO NOTHING
       RETURNING *;
     `;
-    const { rows } = await pool.query(query, [name]);
     
     if (rows.length === 0) {
-        // Find the existing category if conflict occurred
-        const { rows: existingRows } = await pool.query('SELECT * FROM categories WHERE name = $1', [name]);
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(existingRows[0]),
-        };
+      // If nothing was returned, it means the category already existed.
+      // Fetch the existing category to return it to the client.
+      const [existingCategory] = await sql`SELECT * FROM categories WHERE name = ${name}`;
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(existingCategory),
+      };
     }
     
     return {
-      statusCode: 201,
+      statusCode: 201, // 201 Created for a new category
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(rows[0]),
     };

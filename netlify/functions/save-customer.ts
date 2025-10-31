@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { getDbPool } from './db';
+import { neon } from '@netlify/neon';
 import { Customer } from '../../types';
 
 const handler: Handler = async (event, context) => {
@@ -14,30 +14,25 @@ const handler: Handler = async (event, context) => {
       return { statusCode: 400, body: 'Bad Request: Name and phone are required.' };
     }
 
-    const pool = getDbPool();
-    let query;
-    let values;
+    const sql = neon();
+    let rows;
 
     if (customer.id) {
       // Update existing customer
-      query = `
+      rows = await sql`
         UPDATE customers
-        SET name = $1, phone = $2
-        WHERE id = $3
+        SET name = ${customer.name}, phone = ${customer.phone}
+        WHERE id = ${customer.id}
         RETURNING *;
       `;
-      values = [customer.name, customer.phone, customer.id];
     } else {
       // Insert new customer
-      query = `
+      rows = await sql`
         INSERT INTO customers (name, phone)
-        VALUES ($1, $2)
+        VALUES (${customer.name}, ${customer.phone})
         RETURNING *;
       `;
-      values = [customer.name, customer.phone];
     }
-    
-    const { rows } = await pool.query(query, values);
     
     return {
       statusCode: 200,

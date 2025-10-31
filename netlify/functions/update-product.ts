@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { getDbPool } from './db';
+import { neon } from '@netlify/neon';
 
 const handler: Handler = async (event, context) => {
   if (event.httpMethod !== 'PUT') {
@@ -12,29 +12,30 @@ const handler: Handler = async (event, context) => {
       return { statusCode: 400, body: 'Bad Request: Product ID is required.' };
     }
 
-    const pool = getDbPool();
-    const query = `
+    const sql = neon();
+    const rows = await sql`
       UPDATE products
-      SET "productName" = $1, category = $2, "purchaseDate" = $3, "purchasePrice" = $4, "sellingPrice" = $5,
-          status = $6, notes = $7, "invoiceId" = $8, "purchaseOrderId" = $9, "trackingType" = $10,
-          imei = $11, quantity = $12, "customerName" = $13
-      WHERE id = $14
+      SET "productName" = ${updatedProduct.productName}, 
+          category = ${updatedProduct.category}, 
+          "purchaseDate" = ${updatedProduct.purchaseDate}, 
+          "purchasePrice" = ${updatedProduct.purchasePrice}, 
+          "sellingPrice" = ${updatedProduct.sellingPrice},
+          status = ${updatedProduct.status}, 
+          notes = ${updatedProduct.notes || null}, 
+          "invoiceId" = ${updatedProduct.invoiceId || null}, 
+          "purchaseOrderId" = ${updatedProduct.purchaseOrderId || null}, 
+          "trackingType" = ${updatedProduct.trackingType},
+          imei = ${updatedProduct.imei || null}, 
+          quantity = ${updatedProduct.quantity}, 
+          "customerName" = ${updatedProduct.customerName || null}
+      WHERE id = ${updatedProduct.id}
       RETURNING *;
     `;
-    const values = [
-      updatedProduct.productName, updatedProduct.category, updatedProduct.purchaseDate, updatedProduct.purchasePrice,
-      updatedProduct.sellingPrice, updatedProduct.status, updatedProduct.notes || null, updatedProduct.invoiceId || null,
-      updatedProduct.purchaseOrderId || null, updatedProduct.trackingType, updatedProduct.imei || null, updatedProduct.quantity,
-      updatedProduct.customerName || null, updatedProduct.id
-    ];
-    
-    const { rows } = await pool.query(query, values);
 
     if (rows.length === 0) {
       return { statusCode: 404, body: 'Product not found.' };
     }
 
-    // Convert numeric types from string back to number for the response
     const product = {
       ...rows[0],
       purchasePrice: parseFloat(rows[0].purchasePrice),

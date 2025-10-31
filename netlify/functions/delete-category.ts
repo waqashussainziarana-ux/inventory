@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { getDbPool } from './db';
+import { neon } from '@netlify/neon';
 
 const handler: Handler = async (event, context) => {
   if (event.httpMethod !== 'DELETE') {
@@ -12,8 +12,8 @@ const handler: Handler = async (event, context) => {
       return { statusCode: 400, body: 'Bad Request: Category ID is required.' };
     }
 
-    const pool = getDbPool();
-    await pool.query('DELETE FROM categories WHERE id = $1', [id]);
+    const sql = neon();
+    await sql`DELETE FROM categories WHERE id = ${id}`;
     
     return {
       statusCode: 200,

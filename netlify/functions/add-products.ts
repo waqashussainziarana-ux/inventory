@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { getDbPool } from './db';
+import { neon, SQLExecutable } from '@netlify/neon';
 import { Product } from '../../types';
 
 const handler: Handler = async (event, context) => {
@@ -13,50 +13,33 @@ const handler: Handler = async (event, context) => {
       return { statusCode: 400, body: 'Bad Request: No products provided.' };
     }
     
-    const pool = getDbPool();
-    const client = await pool.connect();
+    const sql = neon();
     
-    try {
-      await client.query('BEGIN');
+    // Create an array of SQL queries for the transaction
+    const queries: SQLExecutable[] = newProducts.map(product => sql`
+      INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
+      VALUES (${product.id}, ${product.productName}, ${product.category}, ${product.purchaseDate}, ${product.purchasePrice}, ${product.sellingPrice}, ${product.status}, ${product.notes || null}, ${product.purchaseOrderId || null}, ${product.trackingType}, ${product.imei || null}, ${product.quantity}, ${product.customerName || null})
+      RETURNING *;
+    `);
 
-      const insertedProducts = [];
+    // Execute all insert queries in a single transaction
+    const transactionResults = await sql.transaction(queries);
+    
+    // Each result in the array is the result of one query
+    const insertedProducts = transactionResults.map(res => res[0]);
 
-      for (const product of newProducts) {
-        const query = `
-          INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-          RETURNING *;
-        `;
-        const values = [
-          product.id, product.productName, product.category, product.purchaseDate,
-          product.purchasePrice, product.sellingPrice, product.status, product.notes || null,
-          product.purchaseOrderId || null, product.trackingType, product.imei || null,
-          product.quantity, product.customerName || null
-        ];
-        const { rows } = await client.query(query, values);
-        insertedProducts.push(rows[0]);
-      }
-      
-      await client.query('COMMIT');
-      
-      const formattedProducts = insertedProducts.map(p => ({
-          ...p,
-          purchasePrice: parseFloat(p.purchasePrice),
-          sellingPrice: parseFloat(p.sellingPrice),
-          quantity: parseInt(p.quantity, 10),
-      }));
+    const formattedProducts = insertedProducts.map(p => ({
+        ...p,
+        purchasePrice: parseFloat(p.purchasePrice),
+        sellingPrice: parseFloat(p.sellingPrice),
+        quantity: parseInt(p.quantity, 10),
+    }));
 
-      return {
-        statusCode: 201,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formattedProducts),
-      };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return {
+      statusCode: 201,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formattedProducts),
+    };
 
   } catch (error) {
     console.error('Database Error:', error);
