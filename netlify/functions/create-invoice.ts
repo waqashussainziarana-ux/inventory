@@ -24,7 +24,8 @@ const handler: Handler = async (event, context) => {
     const productIds = items.map(item => item.productId);
     const [customer] = await sql`SELECT * FROM customers WHERE id = ${customerId}`;
     
-    const fetchedProducts = await sql`SELECT * FROM products WHERE id IN ${productIds}`;
+    // Use `ANY(sql.array(...))` for robust array parameter handling
+    const fetchedProducts = await sql`SELECT * FROM products WHERE id = ANY(${sql.array(productIds)})`;
 
     // Immediately parse numeric types from the database result
     const products = fetchedProducts.map(p => ({
