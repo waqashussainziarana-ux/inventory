@@ -23,16 +23,28 @@ const handler: Handler = async (event, context) => {
     
     const productIds = items.map(item => item.productId);
     const [customer] = await sql`SELECT * FROM customers WHERE id = ${customerId}`;
-    const products = await sql`SELECT * FROM products WHERE id IN ${productIds}`;
+    
+    const fetchedProducts = await sql`SELECT * FROM products WHERE id IN ${productIds}`;
+
+    // Immediately parse numeric types from the database result
+    const products = fetchedProducts.map(p => ({
+        ...p,
+        sellingPrice: parseFloat(p.sellingPrice),
+        purchasePrice: parseFloat(p.purchasePrice),
+        quantity: parseInt(p.quantity, 10),
+    }));
 
     if (!customer) {
-        return { statusCode: 404, body: 'Customer not found.' };
+        return { statusCode: 404, body: JSON.stringify({ error: 'Customer not found.' }) };
     }
     if (products.length !== productIds.length) {
-        return { statusCode: 404, body: 'One or more products not found.' };
+        const foundIds = new Set(products.map(p => p.id));
+        const missingIds = productIds.filter(id => !foundIds.has(id));
+        return { statusCode: 404, body: JSON.stringify({ error: `One or more products not found: ${missingIds.join(', ')}` }) };
     }
     
     const [createdInvoice] = await sql.transaction(async (tx) => {
+        // Calculations will now use correctly parsed numbers
         const totalAmount = items.reduce((sum, item) => {
             const product = products.find(p => p.id === item.productId)!;
             return sum + (product.sellingPrice * item.quantity);
@@ -40,7 +52,7 @@ const handler: Handler = async (event, context) => {
         
         const invoiceCountResult = await tx`SELECT count(*) FROM invoices`;
         const invoiceCount = parseInt(invoiceCountResult[0].count, 10);
-        const invoiceNumber = `#${invoiceCount + 1}`;
+        const invoiceNumber = `INV-${new Date().getFullYear()}-${String(invoiceCount + 1).padStart(4, '0')}`;
         const issueDate = new Date().toISOString();
 
         const [invoiceRow] = await tx`
@@ -54,14 +66,13 @@ const handler: Handler = async (event, context) => {
         for (const item of items) {
             const product = products.find(p => p.id === item.productId)!;
             
-            const newItem = {
+            invoiceItemsForResponse.push({
               productId: product.id,
               quantity: item.quantity,
               sellingPrice: product.sellingPrice,
               productName: product.productName,
               imei: product.imei,
-            };
-            invoiceItemsForResponse.push(newItem);
+            });
 
             await tx`
               INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice")
@@ -76,10 +87,14 @@ const handler: Handler = async (event, context) => {
               `;
             } else {
               const newQuantity = product.quantity - item.quantity;
+              if (newQuantity < 0) {
+                  throw new Error(`Insufficient stock for ${product.productName}. Requested: ${item.quantity}, Available: ${product.quantity}`);
+              }
+              // Only mark as sold if quantity is zero
               const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
               await tx`
                 UPDATE products
-                SET quantity = ${newQuantity}, status = ${newStatus}
+                SET quantity = ${newQuantity}, status = ${newStatus}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
               `;
             }
@@ -100,11 +115,11 @@ const handler: Handler = async (event, context) => {
       body: JSON.stringify(createdInvoice),
     };
 
-  } catch (error) {
-    console.error('Database Error:', error);
+  } catch (error: any) {
+    console.error('Database Error in create-invoice:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to create invoice.' }),
+      body: JSON.stringify({ error: 'Failed to create invoice.', details: error.message }),
     };
   }
 };
