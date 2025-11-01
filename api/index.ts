@@ -145,12 +145,21 @@ async function handleCategories(req: VercelRequest, res: VercelResponse, sql: an
             case 'POST': {
                 const { name } = req.body;
                 if (!name) return res.status(400).json({ error: 'Bad Request: Category name is required.' });
-                const [existingCategory] = await sql`SELECT * FROM categories WHERE name = ${name}`;
-                if (existingCategory) {
-                    return res.status(200).json(existingCategory);
+                
+                // Atomically insert the category, ignoring if it already exists. This prevents race conditions.
+                await sql`INSERT INTO categories (id, name) VALUES (${randomUUID()}, ${name}) ON CONFLICT (name) DO NOTHING;`;
+                
+                // Now, unconditionally fetch the category by its unique name.
+                // This guarantees we return the correct, existing or newly-created, category.
+                const [category] = await sql`SELECT * FROM categories WHERE name = ${name}`;
+
+                if (!category) {
+                    // This case should be virtually impossible if the insert works, but it's a good safeguard.
+                    throw new Error("Failed to create or find the category after insertion.");
                 }
-                const rows = await sql`INSERT INTO categories (id, name) VALUES (${randomUUID()}, ${name}) RETURNING *;`;
-                return res.status(201).json(rows[0]);
+
+                // Return 200 OK since we are returning a category, whether it was just created or already existed.
+                return res.status(200).json(category);
             }
             case 'DELETE': {
                 const { id } = req.body;
@@ -179,14 +188,17 @@ async function handleSuppliers(req: VercelRequest, res: VercelResponse, sql: any
                 if (!supplier.name) return res.status(400).json({ error: 'Bad Request: Name is required.' });
                 let rows;
                 if (supplier.id) {
+                    // Handle update
                     rows = await sql`UPDATE suppliers SET name = ${supplier.name}, email = ${supplier.email || null}, phone = ${supplier.phone || null} WHERE id = ${supplier.id} RETURNING *;`;
                 } else {
-                    const [existing] = await sql`SELECT * FROM suppliers WHERE name = ${supplier.name}`;
-                    if (existing) {
-                       rows = await sql`UPDATE suppliers SET email = ${supplier.email || null}, phone = ${supplier.phone || null} WHERE id = ${existing.id} RETURNING *;`;
-                    } else {
-                       rows = await sql`INSERT INTO suppliers (id, name, email, phone) VALUES (${randomUUID()}, ${supplier.name}, ${supplier.email || null}, ${supplier.phone || null}) RETURNING *;`;
-                    }
+                    // Handle insert or update on conflict (upsert) to prevent race conditions.
+                    rows = await sql`
+                        INSERT INTO suppliers (id, name, email, phone) 
+                        VALUES (${randomUUID()}, ${supplier.name}, ${supplier.email || null}, ${supplier.phone || null}) 
+                        ON CONFLICT (name) 
+                        DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone 
+                        RETURNING *;
+                    `;
                 }
                 return res.status(200).json(rows[0]);
             }
