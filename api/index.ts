@@ -461,7 +461,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error('DATABASE_URL environment variable is not set.');
             return res.status(500).json({ error: 'Server configuration error: Database connection string is missing.' });
         }
-        const sql = postgres(process.env.DATABASE_URL);
+        const sql = postgres(process.env.DATABASE_URL, {
+          ssl: 'require',
+        });
         
         // Vercel's rewrite gives us the original path in x-rewritten-path
         const path = (req.headers['x-rewritten-path'] as string) || req.url!;
