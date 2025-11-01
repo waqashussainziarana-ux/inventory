@@ -24,7 +24,7 @@ const handler: Handler = async (event, context) => {
     const productIds = items.map(item => item.productId);
     const [customer] = await sql`SELECT * FROM customers WHERE id = ${customerId}`;
     
-    const fetchedProducts = await sql`SELECT * FROM products WHERE id IN ${sql(productIds)}`;
+    const fetchedProducts = await sql`SELECT * FROM products WHERE id = ANY(${productIds})`;
 
     const products = fetchedProducts.map(p => ({
         ...p,
@@ -59,7 +59,7 @@ const handler: Handler = async (event, context) => {
             RETURNING *;
         `;
 
-        const queries = [];
+        const updateQueries = [];
         const invoiceItemsForResponse: any[] = [];
 
         for (const item of items) {
@@ -73,13 +73,13 @@ const handler: Handler = async (event, context) => {
               imei: product.imei,
             });
 
-            queries.push(tx`
+            updateQueries.push(tx`
               INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice")
               VALUES (${invoiceRow.id}, ${product.id}, ${product.productName}, ${product.imei || null}, ${item.quantity}, ${product.sellingPrice});
             `);
 
             if (product.trackingType === 'imei') {
-              queries.push(tx`
+              updateQueries.push(tx`
                 UPDATE products
                 SET status = ${ProductStatus.Sold}, "customerName" = ${customer.name}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
@@ -90,7 +90,7 @@ const handler: Handler = async (event, context) => {
                   throw new Error(`Insufficient stock for ${product.productName}. Requested: ${item.quantity}, Available: ${product.quantity}`);
               }
               const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
-              queries.push(tx`
+              updateQueries.push(tx`
                 UPDATE products
                 SET quantity = ${newQuantity}, status = ${newStatus}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
@@ -98,9 +98,7 @@ const handler: Handler = async (event, context) => {
             }
         }
         
-        if (queries.length > 0) {
-            await tx.transaction(queries);
-        }
+        await Promise.all(updateQueries);
         
         const finalInvoice = { 
             ...invoiceRow,
