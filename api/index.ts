@@ -11,18 +11,14 @@ if (!process.env.DATABASE_URL) {
     throw new Error('FATAL: DATABASE_URL environment variable is not set.');
 }
 
-// A more robust way to ensure SSL is required for cloud databases like Supabase.
-// This modifies the connection string directly, which is more explicit than passing an option.
-let connectionString = process.env.DATABASE_URL;
-const url = new URL(connectionString);
-if (!url.searchParams.has('sslmode')) {
-    url.searchParams.set('sslmode', 'require');
-    connectionString = url.toString();
-}
-
-// Initialize the connection pool once per function instance. 
-// This is the recommended practice for serverless environments to reuse connections.
-const sql = postgres(connectionString);
+// Initialize the connection pool once per function instance with serverless-specific options.
+// This is the recommended practice for environments like Vercel to prevent connection issues.
+const sql = postgres(process.env.DATABASE_URL, {
+    ssl: 'require',          // Enforce secure SSL connection
+    max: 1,                  // Use a single connection per function instance
+    idle_timeout: 5,         // Close idle connections after 5 seconds
+    connect_timeout: 10,     // Timeout for new connections
+});
 
 
 // --- TYPES ---
