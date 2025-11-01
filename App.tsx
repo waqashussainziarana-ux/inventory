@@ -73,7 +73,7 @@ const App: React.FC = () => {
         'get-products', 'get-customers', 'get-categories', 
         'get-suppliers', 'get-invoices', 'get-purchase-orders'
       ];
-      const responses = await Promise.all(endpoints.map(ep => fetch(`/.netlify/functions/${ep}`)));
+      const responses = await Promise.all(endpoints.map(ep => fetch(`/api/${ep}`)));
 
       for (const res of responses) {
           if (res.status === 404) {
@@ -134,7 +134,7 @@ const App: React.FC = () => {
     try {
         setIsSettingUpDb(true);
         setDataError(null);
-        const response = await fetch('/.netlify/functions/setup-database', { method: 'POST' });
+        const response = await fetch('/api/setup-database', { method: 'POST' });
         if (!response.ok) {
             throw new Error('Failed to initialize the database.');
         }
@@ -200,7 +200,7 @@ const App: React.FC = () => {
     }
 
     try {
-        const response = await fetch('/.netlify/functions/add-products', {
+        const response = await fetch('/api/add-products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newProducts.map(p => ({...p, id: crypto.randomUUID()}))),
@@ -222,7 +222,7 @@ const App: React.FC = () => {
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
     try {
-        const response = await fetch('/.netlify/functions/update-product', {
+        const response = await fetch('/api/update-product', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedProduct),
@@ -242,8 +242,9 @@ const App: React.FC = () => {
   const handleDeleteProduct = async (productId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this product? This action cannot be undone.')) {
         try {
-            const response = await fetch('/.netlify/functions/delete-product', {
+            const response = await fetch('/api/delete-product', {
                 method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: productId }),
             });
             if (!response.ok) {
@@ -273,7 +274,7 @@ const App: React.FC = () => {
 
   const handleCreateInvoice = useCallback(async (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
       try {
-        const response = await fetch('/.netlify/functions/create-invoice', {
+        const response = await fetch('/api/create-invoice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ customerId, items }),
@@ -299,7 +300,7 @@ const App: React.FC = () => {
     productsData: { productInfo: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number } }[]
 ) => {
     try {
-        const response = await fetch('/.netlify/functions/create-purchase-order', {
+        const response = await fetch('/api/create-purchase-order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ poDetails, productsData }),
@@ -327,8 +328,9 @@ const App: React.FC = () => {
         return undefined;
     }
     try {
-        const response = await fetch('/.netlify/functions/save-category', {
+        const response = await fetch('/api/save-category', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name }),
         });
         if (!response.ok) throw new Error('Failed to save category.');
@@ -349,7 +351,7 @@ const App: React.FC = () => {
         return;
     }
     try {
-        await fetch('/.netlify/functions/delete-category', { method: 'DELETE', body: JSON.stringify({ id }) });
+        await fetch('/api/delete-category', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setCategories(prev => prev.filter(c => c.id !== id));
     } catch (error) { console.error(error); alert('Error: Could not delete category.'); }
   };
@@ -358,8 +360,9 @@ const App: React.FC = () => {
   const handleSaveCustomer = async (customerData: Omit<Customer, 'id'>) => {
     const customerToSave = customerToEdit ? { ...customerData, id: customerToEdit.id } : customerData;
     try {
-        const response = await fetch('/.netlify/functions/save-customer', {
+        const response = await fetch('/api/save-customer', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(customerToSave),
         });
         if (!response.ok) throw new Error('Failed to save customer.');
@@ -380,8 +383,9 @@ const App: React.FC = () => {
         return undefined;
     }
     try {
-        const response = await fetch('/.netlify/functions/save-customer', {
+        const response = await fetch('/api/save-customer', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, phone }),
         });
         if (!response.ok) throw new Error('Failed to save customer.');
@@ -406,7 +410,7 @@ const App: React.FC = () => {
         return;
     }
     try {
-        await fetch('/.netlify/functions/delete-customer', { method: 'DELETE', body: JSON.stringify({ id }) });
+        await fetch('/api/delete-customer', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setCustomers(prev => prev.filter(c => c.id !== id));
     } catch (error) { console.error(error); alert('Error: Could not delete customer.'); }
   };
@@ -415,8 +419,9 @@ const App: React.FC = () => {
  const handleSaveSupplier = async (supplierData: Omit<Supplier, 'id'>) => {
     const supplierToSave = supplierToEdit ? { ...supplierData, id: supplierToEdit.id } : supplierData;
     try {
-        const response = await fetch('/.netlify/functions/save-supplier', {
+        const response = await fetch('/api/save-supplier', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(supplierToSave),
         });
         if (!response.ok) throw new Error('Failed to save supplier.');
@@ -451,7 +456,7 @@ const App: React.FC = () => {
         return;
     }
      try {
-        await fetch('/.netlify/functions/delete-supplier', { method: 'DELETE', body: JSON.stringify({ id }) });
+        await fetch('/api/delete-supplier', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setSuppliers(prev => prev.filter(s => s.id !== id));
     } catch (error) { console.error(error); alert('Error: Could not delete supplier.'); }
   };
