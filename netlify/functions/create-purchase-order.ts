@@ -53,28 +53,47 @@ const handler: Handler = async (event, context) => {
             RETURNING *;
         `;
         
-        const insertedProducts = [];
-        for (const p of allNewProducts) {
-            const [newProductRow] = await tx`
-              INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity)
-              VALUES (${crypto.randomUUID()}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, ${ProductStatus.Available}, ${p.notes || null}, ${poRow.id}, ${p.trackingType}, ${p.imei || null}, ${p.quantity})
-              RETURNING *;
-            `;
-            insertedProducts.push({
-                ...newProductRow,
-                purchasePrice: parseFloat(newProductRow.purchasePrice),
-                sellingPrice: parseFloat(newProductRow.sellingPrice),
-                quantity: parseInt(newProductRow.quantity, 10),
-            });
+        if (allNewProducts.length === 0) {
+            const finalPO = { ...poRow, supplierName: supplier.name, totalCost: parseFloat(poRow.totalCost), productIds: [] };
+            return [{ po: finalPO, newProducts: [] }];
         }
+
+        const productsToInsert = allNewProducts.map(p => ({
+            id: crypto.randomUUID(),
+            productName: p.productName,
+            category: p.category,
+            purchaseDate: p.purchaseDate,
+            purchasePrice: p.purchasePrice,
+            sellingPrice: p.sellingPrice,
+            status: ProductStatus.Available,
+            notes: p.notes || null,
+            purchaseOrderId: poRow.id,
+            trackingType: p.trackingType,
+            imei: p.imei || null,
+            quantity: p.quantity,
+            customerName: null,
+            invoiceId: null,
+        }));
+        
+        const insertedProductRows = await tx`
+            INSERT INTO products ${tx(productsToInsert, 'id', 'productName', 'category', 'purchaseDate', 'purchasePrice', 'sellingPrice', 'status', 'notes', 'purchaseOrderId', 'trackingType', 'imei', 'quantity', 'customerName', 'invoiceId')}
+            RETURNING *;
+        `;
+        
+        const formattedNewProducts = insertedProductRows.map(p => ({
+            ...p,
+            purchasePrice: parseFloat(p.purchasePrice),
+            sellingPrice: parseFloat(p.sellingPrice),
+            quantity: parseInt(p.quantity, 10),
+        }));
 
         const finalPO = { 
             ...poRow, 
             supplierName: supplier.name, 
             totalCost: parseFloat(poRow.totalCost), 
-            productIds: insertedProducts.map(p => p.id) 
+            productIds: formattedNewProducts.map(p => p.id) 
         };
-        return [{ po: finalPO, newProducts: insertedProducts }];
+        return [{ po: finalPO, newProducts: formattedNewProducts }];
     });
 
     return {

@@ -24,10 +24,8 @@ const handler: Handler = async (event, context) => {
     const productIds = items.map(item => item.productId);
     const [customer] = await sql`SELECT * FROM customers WHERE id = ${customerId}`;
     
-    // Use `ANY(sql.array(...))` for robust array parameter handling
-    const fetchedProducts = await sql`SELECT * FROM products WHERE id = ANY(${sql.array(productIds)})`;
+    const fetchedProducts = await sql`SELECT * FROM products WHERE id IN ${sql(productIds)}`;
 
-    // Immediately parse numeric types from the database result
     const products = fetchedProducts.map(p => ({
         ...p,
         sellingPrice: parseFloat(p.sellingPrice),
@@ -45,7 +43,6 @@ const handler: Handler = async (event, context) => {
     }
     
     const [createdInvoice] = await sql.transaction(async (tx) => {
-        // Calculations will now use correctly parsed numbers
         const totalAmount = items.reduce((sum, item) => {
             const product = products.find(p => p.id === item.productId)!;
             return sum + (product.sellingPrice * item.quantity);
@@ -62,6 +59,7 @@ const handler: Handler = async (event, context) => {
             RETURNING *;
         `;
 
+        const queries = [];
         const invoiceItemsForResponse: any[] = [];
 
         for (const item of items) {
@@ -75,30 +73,33 @@ const handler: Handler = async (event, context) => {
               imei: product.imei,
             });
 
-            await tx`
+            queries.push(tx`
               INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice")
               VALUES (${invoiceRow.id}, ${product.id}, ${product.productName}, ${product.imei || null}, ${item.quantity}, ${product.sellingPrice});
-            `;
+            `);
 
             if (product.trackingType === 'imei') {
-              await tx`
+              queries.push(tx`
                 UPDATE products
                 SET status = ${ProductStatus.Sold}, "customerName" = ${customer.name}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
-              `;
+              `);
             } else {
               const newQuantity = product.quantity - item.quantity;
               if (newQuantity < 0) {
                   throw new Error(`Insufficient stock for ${product.productName}. Requested: ${item.quantity}, Available: ${product.quantity}`);
               }
-              // Only mark as sold if quantity is zero
               const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
-              await tx`
+              queries.push(tx`
                 UPDATE products
                 SET quantity = ${newQuantity}, status = ${newStatus}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
-              `;
+              `);
             }
+        }
+        
+        if (queries.length > 0) {
+            await tx.transaction(queries);
         }
         
         const finalInvoice = { 
