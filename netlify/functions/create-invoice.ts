@@ -59,7 +59,6 @@ const handler: Handler = async (event, context) => {
             RETURNING *;
         `;
 
-        const updateQueries = [];
         const invoiceItemsForResponse: any[] = [];
 
         for (const item of items) {
@@ -73,32 +72,30 @@ const handler: Handler = async (event, context) => {
               imei: product.imei,
             });
 
-            updateQueries.push(tx`
+            await tx`
               INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice")
               VALUES (${invoiceRow.id}, ${product.id}, ${product.productName}, ${product.imei || null}, ${item.quantity}, ${product.sellingPrice});
-            `);
+            `;
 
             if (product.trackingType === 'imei') {
-              updateQueries.push(tx`
+              await tx`
                 UPDATE products
                 SET status = ${ProductStatus.Sold}, "customerName" = ${customer.name}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
-              `);
+              `;
             } else {
               const newQuantity = product.quantity - item.quantity;
               if (newQuantity < 0) {
                   throw new Error(`Insufficient stock for ${product.productName}. Requested: ${item.quantity}, Available: ${product.quantity}`);
               }
               const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
-              updateQueries.push(tx`
+              await tx`
                 UPDATE products
                 SET quantity = ${newQuantity}, status = ${newStatus}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null}, "invoiceId" = ${invoiceRow.id}
                 WHERE id = ${product.id};
-              `);
+              `;
             }
         }
-        
-        await Promise.all(updateQueries);
         
         const finalInvoice = { 
             ...invoiceRow,
