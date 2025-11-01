@@ -36,7 +36,6 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = (props) => {
     const handleAddProductBatch = (productInfo: NewProductInfo, details: ProductBatch['details']) => {
         setProductBatches(prev => [...prev, { productInfo, details }]);
         setCurrentView('main');
-        return Promise.resolve();
     };
     
     const handleSaveNewSupplier = (supplierData: Omit<Supplier, 'id'>) => {

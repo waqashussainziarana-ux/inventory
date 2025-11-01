@@ -23,7 +23,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSave, onClose, customer }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && phone.trim()) {
+    if (name.trim()) {
       onSave({ name: name.trim(), phone: phone.trim() });
     }
   };
