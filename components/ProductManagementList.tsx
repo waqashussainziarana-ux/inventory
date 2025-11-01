@@ -107,7 +107,7 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                                  <button onClick={() => onEditProduct(product)} className="text-primary hover:text-primary-hover" aria-label={`Edit ${product.productName}`}>
                                      <PencilIcon className="w-4 h-4" />
                                  </button>
-                                 <button onClick={() => onDeleteProduct(product.id)} className="text-red-600 hover:text-red-800 disabled:text-gray-300" disabled={product.status === ProductStatus.Sold} aria-label={`Delete ${product.productName}`}>
+                                 <button onClick={() => onDeleteProduct(product.id)} className="text-red-600 hover:text-red-800" aria-label={`Delete ${product.productName}`}>
                                      <TrashIcon className="w-4 h-4" />
                                  </button>
                                </div>

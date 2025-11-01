@@ -239,15 +239,21 @@ const App: React.FC = () => {
     }
   };
   
-  const handleDeleteProduct = (productId: string) => {
-    // TODO: Implement API call to a new Netlify Function 'delete-product'.
+  const handleDeleteProduct = async (productId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this product? This action cannot be undone.')) {
-        const productToDelete = products.find(p => p.id === productId);
-        if (productToDelete && productToDelete.status === ProductStatus.Sold) {
-            alert("Cannot delete a product that has been sold.");
-            return;
+        try {
+            const response = await fetch('/.netlify/functions/delete-product', {
+                method: 'DELETE',
+                body: JSON.stringify({ id: productId }),
+            });
+            if (!response.ok) {
+                throw new Error('Failed to delete product from the database.');
+            }
+            await fetchData(); // Refresh data after deletion
+        } catch (error) {
+            console.error('Error deleting product:', error);
+            alert('Error: Could not delete the product.');
         }
-        setProducts(prev => prev.filter(p => p.id !== productId));
     }
   };
 
