@@ -203,7 +203,7 @@ const App: React.FC = () => {
         const response = await fetch('/api/products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newProducts.map(p => ({...p, id: crypto.randomUUID()}))),
+            body: JSON.stringify(newProducts),
         });
         if (!response.ok) throw new Error('Failed to save new products.');
         await fetchData();

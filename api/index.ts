@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { neon } from '@neondatabase/serverless';
-import { Product, ProductStatus, InvoiceItem, Customer, Supplier, NewProductInfo, PurchaseOrderStatus } from '../types';
+import { Product, ProductStatus, InvoiceItem, Customer, Supplier, NewProduct, NewProductInfo, PurchaseOrderStatus } from '../types';
 import { randomUUID } from 'crypto';
 
 type ProductBatch = {
@@ -15,7 +15,6 @@ interface CreateInvoicePayload {
   customerId: string;
   items: Omit<InvoiceItem, 'productName' | 'imei'>[];
 }
-
 
 // Generic Error Handler
 function handleError(res: VercelResponse, error: any, resourceName: string) {
@@ -44,11 +43,15 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, sql: any)
                 return res.status(200).json(products);
             }
             case 'POST': {
-                 const newProducts: Product[] = req.body;
-                if (!Array.isArray(newProducts) || newProducts.length === 0) {
+                 const newProductsData: NewProduct[] = req.body;
+                if (!Array.isArray(newProductsData) || newProductsData.length === 0) {
                     return res.status(400).json({ error: 'Bad Request: No products provided.' });
                 }
-                const queries = newProducts.map(product => sql`
+
+                // Generate IDs on the server
+                const newProductsWithIds: Product[] = newProductsData.map(p => ({ ...p, id: randomUUID() }));
+
+                const queries = newProductsWithIds.map(product => sql`
                     INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
                     VALUES (${product.id}, ${product.productName}, ${product.category}, ${product.purchaseDate}, ${product.purchasePrice}, ${product.sellingPrice}, ${product.status}, ${product.notes || null}, ${product.purchaseOrderId || null}, ${product.trackingType}, ${product.imei || null}, ${product.quantity}, ${product.customerName || null})
                     RETURNING *;
@@ -113,7 +116,7 @@ async function handleCustomers(req: VercelRequest, res: VercelResponse, sql: any
                 if (customer.id) {
                     rows = await sql`UPDATE customers SET name = ${customer.name}, phone = ${customer.phone} WHERE id = ${customer.id} RETURNING *;`;
                 } else {
-                    rows = await sql`INSERT INTO customers (name, phone) VALUES (${customer.name}, ${customer.phone}) RETURNING *;`;
+                    rows = await sql`INSERT INTO customers (id, name, phone) VALUES (${randomUUID()}, ${customer.name}, ${customer.phone}) RETURNING *;`;
                 }
                 return res.status(200).json(rows[0]);
             }
@@ -142,11 +145,11 @@ async function handleCategories(req: VercelRequest, res: VercelResponse, sql: an
             case 'POST': {
                 const { name } = req.body;
                 if (!name) return res.status(400).json({ error: 'Bad Request: Category name is required.' });
-                const rows = await sql`INSERT INTO categories (name) VALUES (${name}) ON CONFLICT (name) DO NOTHING RETURNING *;`;
-                if (rows.length === 0) {
-                    const [existingCategory] = await sql`SELECT * FROM categories WHERE name = ${name}`;
+                const [existingCategory] = await sql`SELECT * FROM categories WHERE name = ${name}`;
+                if (existingCategory) {
                     return res.status(200).json(existingCategory);
                 }
+                const rows = await sql`INSERT INTO categories (id, name) VALUES (${randomUUID()}, ${name}) RETURNING *;`;
                 return res.status(201).json(rows[0]);
             }
             case 'DELETE': {
@@ -178,7 +181,12 @@ async function handleSuppliers(req: VercelRequest, res: VercelResponse, sql: any
                 if (supplier.id) {
                     rows = await sql`UPDATE suppliers SET name = ${supplier.name}, email = ${supplier.email || null}, phone = ${supplier.phone || null} WHERE id = ${supplier.id} RETURNING *;`;
                 } else {
-                    rows = await sql`INSERT INTO suppliers (name, email, phone) VALUES (${supplier.name}, ${supplier.email || null}, ${supplier.phone || null}) ON CONFLICT (name) DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone RETURNING *;`;
+                    const [existing] = await sql`SELECT * FROM suppliers WHERE name = ${supplier.name}`;
+                    if (existing) {
+                       rows = await sql`UPDATE suppliers SET email = ${supplier.email || null}, phone = ${supplier.phone || null} WHERE id = ${existing.id} RETURNING *;`;
+                    } else {
+                       rows = await sql`INSERT INTO suppliers (id, name, email, phone) VALUES (${randomUUID()}, ${supplier.name}, ${supplier.email || null}, ${supplier.phone || null}) RETURNING *;`;
+                    }
                 }
                 return res.status(200).json(rows[0]);
             }
@@ -300,19 +308,19 @@ async function handlePurchaseOrders(req: VercelRequest, res: VercelResponse, sql
                 if (!supplier) return res.status(404).json({ error: 'Supplier not found.' });
 
                 let totalCost = 0;
-                const productsToInsert = [];
+                const productsToInsert: Product[] = [];
                 const newPoId = randomUUID();
 
                 for (const batch of productsData) {
                     const commonData = { ...batch.productInfo, status: ProductStatus.Available, purchaseOrderId: newPoId };
                     if (batch.details.trackingType === 'imei') {
                         for (const imei of batch.details.imeis) {
-                            const newProduct = { ...commonData, id: randomUUID(), imei, quantity: 1, trackingType: 'imei' as const };
+                            const newProduct: Product = { ...commonData, id: randomUUID(), imei, quantity: 1, trackingType: 'imei' as const, customerName: undefined };
                             productsToInsert.push(newProduct);
                             totalCost += commonData.purchasePrice;
                         }
                     } else {
-                        const newProduct = { ...commonData, id: randomUUID(), imei: null, quantity: batch.details.quantity, trackingType: 'quantity' as const };
+                        const newProduct: Product = { ...commonData, id: randomUUID(), imei: undefined, quantity: batch.details.quantity, trackingType: 'quantity' as const, customerName: undefined };
                         productsToInsert.push(newProduct);
                         totalCost += commonData.purchasePrice * batch.details.quantity;
                     }
@@ -321,7 +329,7 @@ async function handlePurchaseOrders(req: VercelRequest, res: VercelResponse, sql
                     sql`INSERT INTO purchase_orders (id, "poNumber", "supplierId", "issueDate", "totalCost", status, notes) VALUES (${newPoId}, ${poDetails.poNumber}, ${poDetails.supplierId}, ${new Date().toISOString()}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})`
                 ];
                 for (const p of productsToInsert) {
-                    queries.push(sql`INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity) VALUES (${p.id}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, ${p.status}, ${p.notes}, ${p.purchaseOrderId}, ${p.trackingType}, ${p.imei}, ${p.quantity})`);
+                    queries.push(sql`INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity) VALUES (${p.id}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, ${p.status}, ${p.notes}, ${p.purchaseOrderId}, ${p.trackingType}, ${p.imei || null}, ${p.quantity})`);
                 }
                 await sql.transaction(queries);
                 
@@ -368,28 +376,38 @@ async function handleDbSetup(req: VercelRequest, res: VercelResponse, sql: any) 
 // --- MAIN HANDLER / ROUTER ---
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    const sql = neon(process.env.DATABASE_URL!);
-    
-    // Vercel's rewrite gives us the original path in x-rewritten-path
-    const path = (req.headers['x-rewritten-path'] as string) || req.url!;
-    const endpoint = path.split('/')[2]?.split('?')[0] || '';
+    try {
+        if (!process.env.DATABASE_URL) {
+            console.error('DATABASE_URL environment variable is not set.');
+            return res.status(500).json({ error: 'Server configuration error: Database connection string is missing.' });
+        }
+        const sql = neon(process.env.DATABASE_URL);
+        
+        // Vercel's rewrite gives us the original path in x-rewritten-path
+        const path = (req.headers['x-rewritten-path'] as string) || req.url!;
+        const endpoint = path.split('/')[2]?.split('?')[0] || '';
 
-    switch (endpoint) {
-        case 'products':
-            return handleProducts(req, res, sql);
-        case 'customers':
-            return handleCustomers(req, res, sql);
-        case 'categories':
-            return handleCategories(req, res, sql);
-        case 'suppliers':
-            return handleSuppliers(req, res, sql);
-        case 'invoices':
-            return handleInvoices(req, res, sql);
-        case 'purchase-orders':
-            return handlePurchaseOrders(req, res, sql);
-        case 'setup':
-            return handleDbSetup(req, res, sql);
-        default:
-            return res.status(404).json({ error: 'Endpoint not found' });
+        switch (endpoint) {
+            case 'products':
+                return await handleProducts(req, res, sql);
+            case 'customers':
+                return await handleCustomers(req, res, sql);
+            case 'categories':
+                return await handleCategories(req, res, sql);
+            case 'suppliers':
+                return await handleSuppliers(req, res, sql);
+            case 'invoices':
+                return await handleInvoices(req, res, sql);
+            case 'purchase-orders':
+                return await handlePurchaseOrders(req, res, sql);
+            case 'setup':
+                return await handleDbSetup(req, res, sql);
+            default:
+                return res.status(404).json({ error: 'Endpoint not found' });
+        }
+    } catch (error) {
+        // This is a top-level catch for unexpected errors (e.g., if neon() fails)
+        console.error('An unexpected error occurred in the main handler:', error);
+        return res.status(500).json({ error: 'An unexpected server error occurred.', details: (error as Error).message });
     }
 }
