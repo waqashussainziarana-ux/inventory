@@ -20,7 +20,7 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import LoginScreen from './components/LoginScreen';
 import { downloadPdf } from './utils/pdfGenerator';
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, LogoutIcon } from './components/icons';
+import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, LogoutIcon, DownloadIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
@@ -173,6 +173,65 @@ const App: React.FC = () => {
     setDocumentToPrint({ type: 'po', data: po });
   };
 
+  const handleExportToCSV = () => {
+    if (products.length === 0) {
+        alert("There is no inventory data to export.");
+        return;
+    }
+
+    const headers = [
+        "ID", "Product Name", "Category", "Purchase Date", "Purchase Price",
+        "Selling Price", "Status", "Tracking Type", "IMEI", "Quantity",
+        "Customer Name", "Invoice ID", "Purchase Order ID", "Notes"
+    ];
+
+    const csvRows = [headers.join(',')]; // Header row
+
+    // Helper to safely format CSV fields (handles commas and quotes)
+    const formatCsvField = (field: any): string => {
+        if (field === null || field === undefined) {
+            return '';
+        }
+        const stringField = String(field);
+        // If the field contains a comma, double quote, or newline, wrap it in double quotes
+        if (/[",\n]/.test(stringField)) {
+            return `"${stringField.replace(/"/g, '""')}"`;
+        }
+        return stringField;
+    };
+
+    for (const product of products) {
+        const row = [
+            formatCsvField(product.id),
+            formatCsvField(product.productName),
+            formatCsvField(product.category),
+            formatCsvField(product.purchaseDate),
+            formatCsvField(product.purchasePrice),
+            formatCsvField(product.sellingPrice),
+            formatCsvField(product.status),
+            formatCsvField(product.trackingType),
+            formatCsvField(product.imei),
+            formatCsvField(product.quantity),
+            formatCsvField(product.customerName),
+            formatCsvField(product.invoiceId),
+            formatCsvField(product.purchaseOrderId),
+            formatCsvField(product.notes),
+        ];
+        csvRows.push(row.join(','));
+    }
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const date = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `inventory-export-${date}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
   const availableProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Available), [products]);
@@ -498,46 +557,35 @@ const App: React.FC = () => {
   const mainTabs = TABS.filter(tab => tab.id === 'active' || tab.id === 'sold');
   const managementTabs = TABS.filter(tab => tab.id !== 'active' && tab.id !== 'sold');
 
-
   const renderContent = () => {
     if (isLoading) {
-      return <div className="text-center py-20"><p className="text-lg font-medium text-slate-600">Loading inventory from database...</p></div>;
-    }
-    if (dataError) {
-      return (
-        <div className="text-center py-20 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-lg font-semibold text-red-700">Failed to load inventory</p>
-          <p className="text-sm text-red-600 mt-2">{dataError}</p>
-          <p className="text-xs text-slate-500 mt-4">Please ensure your database is running and the `DATABASE_URL` is correctly set in your Vercel environment variables.</p>
-        </div>
-      );
+      return <div className="text-center py-12 px-4"><p>Loading application...</p></div>;
     }
     if (needsDbSetup) {
         return (
-            <div className="text-center py-20 p-6 bg-blue-50 border border-blue-200 rounded-lg">
-                <h2 className="text-xl font-semibold text-blue-800">Welcome to Inventory Pro!</h2>
-                <p className="text-slate-600 mt-2 max-w-md mx-auto">Your database is connected, but the necessary tables haven't been created yet. Click the button below to set them up automatically.</p>
-                <button
+            <div className="text-center py-12 px-4">
+                <h2 className="text-2xl font-bold text-slate-800">Welcome to Inventory Pro</h2>
+                <p className="mt-2 text-slate-600">Your database is not yet initialized.</p>
+                <button 
                     onClick={handleInitializeDb}
                     disabled={isSettingUpDb}
-                    className="mt-6 inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
+                    className="mt-6 px-6 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-hover disabled:opacity-50"
                 >
                     {isSettingUpDb ? 'Initializing...' : 'Initialize Database'}
                 </button>
+                {dataError && <p className="mt-4 text-red-600">{dataError}</p>}
             </div>
         );
     }
-
+    if (dataError) {
+      return <div className="text-center py-12 px-4 text-red-600"><p>Failed to load inventory</p><p className="text-sm">{dataError}</p></div>;
+    }
+    
+    // The main content for authenticated users
     switch(activeTab) {
         case 'active':
-            return (
-                <div className="space-y-6">
-                    <Dashboard products={products} invoices={invoices} />
-                    <ProductList products={filteredProducts} purchaseOrders={purchaseOrders} onEditProduct={handleOpenEditModal} listType={searchQuery ? 'search' : activeTab} searchQuery={searchQuery} />
-                </div>
-            );
         case 'sold':
-            return <ProductList products={filteredProducts} purchaseOrders={purchaseOrders} onEditProduct={handleOpenEditModal} listType={searchQuery ? 'search' : activeTab} searchQuery={searchQuery} />;
+            return <ProductList products={filteredProducts} purchaseOrders={purchaseOrders} onEditProduct={handleOpenEditModal} listType={activeTab} searchQuery={searchQuery} />;
         case 'products':
             return <ProductManagementList products={filteredProducts} onEditProduct={handleOpenEditModal} onDeleteProduct={handleDeleteProduct} onArchiveProduct={handleArchiveProduct} />;
         case 'archive':
@@ -551,162 +599,121 @@ const App: React.FC = () => {
         case 'categories':
             return <CategoryManagement categories={categories} products={products} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} />;
         case 'suppliers':
-            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onEdit={(s) => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={handleDeleteSupplier} onAddSupplier={handleOpenAddSupplierModal} />;
+            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={handleOpenAddSupplierModal} onEdit={(s) => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={handleDeleteSupplier} />;
         default:
-            return null;
+             // Should not happen, but as a fallback
+             return <Dashboard products={products} invoices={invoices} />;
     }
-  }
+  };
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
+  if (documentToPrint) {
+    const documentComponent = documentToPrint.type === 'invoice'
+      ? <InvoicePDF invoice={documentToPrint.data as Invoice} />
+      : <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />;
+    return <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">{documentComponent}</div>;
+  }
+
+  const nextPoNumber = `PO-${new Date().getFullYear()}-${String(purchaseOrders.length + 1).padStart(4, '0')}`;
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800">
-      <header className="bg-slate-100/80 backdrop-blur-lg border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <h1 className="text-2xl font-bold text-slate-800">Inventory Pro</h1>
-          <div className="flex items-center gap-3 flex-wrap justify-center">
-            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-slate-200 rounded-lg shadow-sm hover:bg-slate-300 focus:outline-none">
-              <LogoutIcon className="w-5 h-5" /> Logout
-            </button>
-            <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                <ClipboardDocumentListIcon className="w-5 h-5" /> Create PO
-            </button>
-            <button onClick={() => setInvoiceModalOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-500 rounded-lg shadow-sm hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-              <DocumentTextIcon className="w-5 h-5" /> Create Invoice
-            </button>
-             <button onClick={() => setAddProductModalOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg shadow-sm hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
-              <PlusIcon className="w-5 h-5" /> Add Product(s)
-            </button>
-          </div>
-        </div>
-      </header>
-      
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-6">
-          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm">
-            <div className="border-b border-slate-200">
-              <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                {mainTabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => clearSearch(tab.id as ActiveTab)}
-                    className={`whitespace-nowrap flex items-center gap-2 py-3 px-1 border-b-2 font-semibold text-base transition-colors ${
-                      activeTab === tab.id
-                        ? 'border-primary text-primary'
-                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                    }`}
-                  >
-                    {tab.label}
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${activeTab === tab.id ? tab.color : 'bg-slate-200 text-slate-600'}`}>
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
-              </nav>
+    <div className="min-h-screen bg-slate-50">
+        <header className="bg-white shadow-sm sticky top-0 z-40">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between items-center py-3">
+                    <h1 className="text-2xl font-bold text-primary">Inventory Pro</h1>
+                    <div className="flex items-center gap-4">
+                        <button onClick={handleExportToCSV} className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200" title="Download all products as CSV">
+                            <DownloadIcon className="w-4 h-4" /> Export CSV
+                        </button>
+                        <button onClick={handleLogout} className="flex items-center gap-2 text-slate-500 hover:text-primary">
+                            <LogoutIcon className="w-5 h-5" />
+                            <span className="text-sm font-medium">Logout</span>
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div className="pt-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-x-6 gap-y-4">
-              {managementTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => clearSearch(tab.id as ActiveTab)}
-                  className="text-left group focus:outline-none"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className={`text-sm font-semibold ${activeTab === tab.id ? 'text-primary' : 'text-slate-600 group-hover:text-slate-900'}`}>{tab.label}</p>
-                    <span className={`${tab.color} text-xs font-bold px-2 py-0.5 rounded-full`}>
-                      {tab.count}
-                    </span>
-                  </div>
-                </button>
-              ))}
+        </header>
+        
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-2">
+                    <div className="relative w-full">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <SearchIcon className="h-5 w-5 text-slate-400" />
+                        </div>
+                        <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by IMEI, product, customer..." className="block w-full rounded-md border-slate-300 pl-10 shadow-sm sm:text-sm py-2.5"/>
+                    </div>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-rose-600 rounded-md shadow-sm hover:bg-rose-700">
+                        <ClipboardDocumentListIcon className="w-5 h-5" /> PO
+                    </button>
+                    <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700">
+                        <DocumentTextIcon className="w-5 h-5" /> Invoice
+                    </button>
+                    <button onClick={() => setAddProductModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-hover">
+                        <PlusIcon className="w-5 h-5" /> Product
+                    </button>
+                </div>
             </div>
-          </div>
 
-          <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <SearchIcon className="h-5 w-5 text-slate-400" />
+            <div className="mt-6">
+                <Dashboard products={products} invoices={invoices} />
             </div>
-            <input
-              type="text"
-              placeholder="Search by Product, IMEI, Customer, Category..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full rounded-lg border-slate-300 pl-10 shadow-sm focus:border-primary focus:ring-primary sm:text-sm py-2.5"
-            />
-          </div>
-            
-          {renderContent()}
 
-        </div>
-      </main>
+            <div className="mt-8">
+                <div className="border-b border-gray-200">
+                    <nav className="-mb-px flex flex-wrap gap-x-6" aria-label="Tabs">
+                        {[...mainTabs, ...managementTabs].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => clearSearch(tab.id)}
+                                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                            >
+                                {tab.label}
+                                <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${tab.color}`}>{tab.count}</span>
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+                <div className="mt-6">
+                    {renderContent()}
+                </div>
+            </div>
+        </main>
 
-      <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add New Product Batch">
-        <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
-      </Modal>
-
-      <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="Create New Invoice">
-        <InvoiceForm 
-          availableProducts={availableProducts}
-          customers={customers}
-          onCreateInvoice={handleCreateInvoice}
-          onClose={() => setInvoiceModalOpen(false)}
-          onAddNewCustomer={handleAddCustomer} 
-        />
-      </Modal>
-
-      <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="Create New Purchase Order">
-          <PurchaseOrderForm 
-            suppliers={suppliers}
-            onSaveSupplier={handleSaveSupplier}
-            categories={categories}
-            onAddCategory={handleAddCategory}
-            existingImeis={existingImeis}
-            onCreatePurchaseOrder={handleCreatePurchaseOrder}
-            onClose={() => setPurchaseOrderModalOpen(false)}
-            nextPoNumber={`PO-${String(purchaseOrders.length + 1).padStart(4, '0')}`}
-          />
-      </Modal>
-      
-      <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
-        {productToEdit && (
-            <ProductEditForm
-                product={productToEdit}
+        {/* Modals */}
+        <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add New Product(s)">
+            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
+        </Modal>
+        <Modal isOpen={isEditModalOpen} onClose={() => { setEditModalOpen(false); setProductToEdit(null); }} title="Edit Product">
+            {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => { setEditModalOpen(false); setProductToEdit(null); }} categories={categories} />}
+        </Modal>
+        <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="Create New Invoice">
+            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={handleAddCustomer} />
+        </Modal>
+        <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="Create New Purchase Order">
+            <PurchaseOrderForm 
+                suppliers={suppliers}
+                onSaveSupplier={handleSaveSupplier}
                 categories={categories}
-                onUpdateProduct={handleUpdateProduct}
-                onClose={() => setEditModalOpen(false)}
+                onAddCategory={handleAddCategory}
+                existingImeis={existingImeis}
+                onCreatePurchaseOrder={handleCreatePurchaseOrder}
+                onClose={() => setPurchaseOrderModalOpen(false)}
+                nextPoNumber={nextPoNumber}
             />
-        )}
-      </Modal>
-      
-      <Modal isOpen={isCustomerModalOpen} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} title={customerToEdit ? "Edit Customer" : "Add New Customer"}>
-        <CustomerForm 
-          onSave={handleSaveCustomer} 
-          onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} 
-          customer={customerToEdit} 
-        />
-      </Modal>
-
-      <Modal isOpen={isSupplierModalOpen} onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} title={supplierToEdit ? "Edit Supplier" : "Add New Supplier"}>
-          <SupplierForm 
-            onSave={handleSaveSupplier} 
-            onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} 
-            supplier={supplierToEdit} 
-          />
-      </Modal>
-
-      {documentToPrint?.type === 'invoice' && (
-        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-          <InvoicePDF invoice={documentToPrint.data as Invoice} />
-        </div>
-      )}
-      {documentToPrint?.type === 'po' && (
-        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-          <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />
-        </div>
-      )}
-      
+        </Modal>
+        <Modal isOpen={isCustomerModalOpen} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} title={customerToEdit ? 'Edit Customer' : 'Add New Customer'}>
+            <CustomerForm customer={customerToEdit} onSave={handleSaveCustomer} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} />
+        </Modal>
+        <Modal isOpen={isSupplierModalOpen} onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} title={supplierToEdit ? 'Edit Supplier' : 'Add New Supplier'}>
+            <SupplierForm supplier={supplierToEdit} onSave={handleSaveSupplier} onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} />
+        </Modal>
     </div>
   );
 };
