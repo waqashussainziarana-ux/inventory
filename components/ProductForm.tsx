@@ -69,9 +69,9 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             onscan.attachTo(document, {
                 onScan: handleScan,
                 reactToPaste: true,
-                // Fix: Corrected property 'maxLength' to 'maxScanLength' to align with the expected type 'ScanOptions'.
+                // Fix: Corrected property name from 'minScanLength' to 'minLength' and 'maxScanLength' to 'maxLength' to match the onscan.js API.
                 minLength: 14,
-                maxScanLength: 16,
+                maxLength: 16,
                 keyCodeMapper: (e: KeyboardEvent) => onscan.decodeKeyEvent(e),
             });
         }
