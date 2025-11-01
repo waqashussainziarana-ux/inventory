@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { neon } from '@neondatabase/serverless';
+import postgres from 'postgres';
 import { Product, ProductStatus, Invoice, InvoiceItem, Customer, Supplier, NewProduct, NewProductInfo, PurchaseOrderStatus } from '../types';
 import { randomUUID } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
@@ -461,7 +461,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error('DATABASE_URL environment variable is not set.');
             return res.status(500).json({ error: 'Server configuration error: Database connection string is missing.' });
         }
-        const sql = neon(process.env.DATABASE_URL);
+        const sql = postgres(process.env.DATABASE_URL);
         
         // Vercel's rewrite gives us the original path in x-rewritten-path
         const path = (req.headers['x-rewritten-path'] as string) || req.url!;

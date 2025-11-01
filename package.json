@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^0.12.0",
-    "@neondatabase/serverless": "^0.9.3",
+    "postgres": "^3.4.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "onscan.js": "^1.5.2",
