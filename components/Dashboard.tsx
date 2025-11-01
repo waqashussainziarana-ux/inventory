@@ -1,6 +1,7 @@
 import React from 'react';
 import { Product, ProductStatus, Invoice } from '../types';
 import { BuildingStorefrontIcon, ScaleIcon, ChartBarIcon, DocumentDuplicateIcon } from './icons';
+import AIInsights from './AIInsights';
 
 interface DashboardProps {
   products: Product[];
@@ -44,32 +45,35 @@ const Dashboard: React.FC<DashboardProps> = ({ products, invoices }) => {
   const grossProfit = totalSalesValue - costOfGoodsSold;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <StatCard 
-        title="Active Stock" 
-        value={totalStock} 
-        icon={<BuildingStorefrontIcon className="w-6 h-6 text-sky-600" />}
-        iconBgColor="bg-sky-100" 
-      />
-      <StatCard 
-        title="Inventory Value" 
-        value={formatCurrency(totalInventoryValue)} 
-        icon={<ScaleIcon className="w-6 h-6 text-indigo-600" />}
-        iconBgColor="bg-indigo-100" 
-      />
-      <StatCard 
-        title="Gross Profit" 
-        value={formatCurrency(grossProfit)} 
-        icon={<ChartBarIcon className="w-6 h-6 text-green-600" />}
-        iconBgColor="bg-green-100" 
-      />
-      <StatCard 
-        title="Total Invoices" 
-        value={invoices.length} 
-        icon={<DocumentDuplicateIcon className="w-6 h-6 text-amber-600" />}
-        iconBgColor="bg-amber-100" 
-      />
-    </div>
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard 
+          title="Active Stock" 
+          value={totalStock} 
+          icon={<BuildingStorefrontIcon className="w-6 h-6 text-sky-600" />}
+          iconBgColor="bg-sky-100" 
+        />
+        <StatCard 
+          title="Inventory Value" 
+          value={formatCurrency(totalInventoryValue)} 
+          icon={<ScaleIcon className="w-6 h-6 text-indigo-600" />}
+          iconBgColor="bg-indigo-100" 
+        />
+        <StatCard 
+          title="Gross Profit" 
+          value={formatCurrency(grossProfit)} 
+          icon={<ChartBarIcon className="w-6 h-6 text-green-600" />}
+          iconBgColor="bg-green-100" 
+        />
+        <StatCard 
+          title="Total Invoices" 
+          value={invoices.length} 
+          icon={<DocumentDuplicateIcon className="w-6 h-6 text-amber-600" />}
+          iconBgColor="bg-amber-100" 
+        />
+      </div>
+      <AIInsights products={products} invoices={invoices} />
+    </>
   );
 };
 

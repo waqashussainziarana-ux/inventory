@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { neon } from '@neondatabase/serverless';
-import { Product, ProductStatus, InvoiceItem, Customer, Supplier, NewProduct, NewProductInfo, PurchaseOrderStatus } from '../types';
+import { Product, ProductStatus, Invoice, InvoiceItem, Customer, Supplier, NewProduct, NewProductInfo, PurchaseOrderStatus } from '../types';
 import { randomUUID } from 'crypto';
+import { GoogleGenAI } from '@google/genai';
 
 type ProductBatch = {
     productInfo: NewProductInfo;
@@ -359,6 +360,72 @@ async function handlePurchaseOrders(req: VercelRequest, res: VercelResponse, sql
     }
 }
 
+async function handleGenerateInsights(req: VercelRequest, res: VercelResponse) {
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', ['POST']);
+        return res.status(405).end(`Method ${req.method} Not Allowed`);
+    }
+
+    try {
+        if (!process.env.API_KEY) {
+            return res.status(500).json({ error: 'Server configuration error: Gemini API key is missing.' });
+        }
+
+        const { products, invoices } = req.body;
+
+        if (!products || !invoices) {
+            return res.status(400).json({ error: 'Bad Request: Missing products or invoices data.' });
+        }
+
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+        const availableProducts = products.filter((p: Product) => p.status === ProductStatus.Available);
+        const soldProducts = products.filter((p: Product) => p.status === ProductStatus.Sold);
+        
+        const totalStock = availableProducts.reduce((sum: number, p: Product) => sum + p.quantity, 0);
+        const totalInventoryValue = availableProducts.reduce((sum: number, p: Product) => sum + (p.purchasePrice * p.quantity), 0);
+        const totalSalesValue = invoices.reduce((sum: number, inv: Invoice) => sum + inv.totalAmount, 0);
+        
+        const prompt = `
+            You are an expert business analyst for an electronics resale shop.
+            Analyze the following inventory and sales data and provide a concise summary with actionable insights.
+            Format your response using Markdown with headings, bold text, and bullet points.
+
+            Current Data Snapshot:
+            - Total Active Stock Units: ${totalStock}
+            - Total Inventory Value (Cost): ${totalInventoryValue.toFixed(2)} EUR
+            - Total Sales Value (Last ${invoices.length} invoices): ${totalSalesValue.toFixed(2)} EUR
+            - Number of Invoices: ${invoices.length}
+
+            Product Details (sample of available products):
+            ${availableProducts.slice(0, 10).map((p: Product) => `- ${p.productName} (Sell: ${p.sellingPrice} EUR, Stock: ${p.quantity})`).join('\n')}
+
+            Recent Sales (sample of sold items):
+            ${soldProducts.slice(0, 10).map((p: Product) => `- ${p.productName} (Sold for: ${p.sellingPrice} EUR)`).join('\n')}
+
+            Based on this data, provide:
+            1.  A brief "### Business Performance Summary".
+            2.  A section on "### Opportunities & Observations" highlighting top performers or slow-moving stock.
+            3.  A section with 2-3 "### Actionable Recommendations" for the business owner (e.g., promotions, restocking advice, pricing adjustments).
+            
+            Keep the tone professional, encouraging, and data-driven.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+
+        const text = response.text;
+        
+        return res.status(200).json({ insights: text });
+
+    } catch (error: any) {
+        console.error('Error generating AI insights:', error);
+        return res.status(500).json({ error: 'Failed to generate insights from AI model.', details: error.message });
+    }
+}
+
 async function handleDbSetup(req: VercelRequest, res: VercelResponse, sql: any) {
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST']);
@@ -413,6 +480,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 return await handleInvoices(req, res, sql);
             case 'purchase-orders':
                 return await handlePurchaseOrders(req, res, sql);
+            case 'generate-insights':
+                return await handleGenerateInsights(req, res);
             case 'setup':
                 return await handleDbSetup(req, res, sql);
             default:
