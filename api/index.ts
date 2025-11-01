@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { neon, SQLExecutable } from '@neondatabase/serverless';
-import { Product, ProductStatus, InvoiceItem, Customer, Supplier, NewProductInfo, PurchaseOrderStatus } from '../../types';
+import { neon } from '@neondatabase/serverless';
+import { Product, ProductStatus, InvoiceItem, Customer, Supplier, NewProductInfo, PurchaseOrderStatus } from '../types';
 import { randomUUID } from 'crypto';
 
 type ProductBatch = {
@@ -48,7 +48,7 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, sql: any)
                 if (!Array.isArray(newProducts) || newProducts.length === 0) {
                     return res.status(400).json({ error: 'Bad Request: No products provided.' });
                 }
-                const queries: SQLExecutable[] = newProducts.map(product => sql`
+                const queries = newProducts.map(product => sql`
                     INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
                     VALUES (${product.id}, ${product.productName}, ${product.category}, ${product.purchaseDate}, ${product.purchasePrice}, ${product.sellingPrice}, ${product.status}, ${product.notes || null}, ${product.purchaseOrderId || null}, ${product.trackingType}, ${product.imei || null}, ${product.quantity}, ${product.customerName || null})
                     RETURNING *;
@@ -239,7 +239,7 @@ async function handleInvoices(req: VercelRequest, res: VercelResponse, sql: any)
                 const invoiceNumber = `INV-${new Date().getFullYear()}-${String(parseInt(count, 10) + 1).padStart(4, '0')}`;
                 const newInvoiceId = randomUUID();
                 
-                const queries: SQLExecutable[] = [
+                const queries = [
                     sql`INSERT INTO invoices (id, "invoiceNumber", "customerId", "issueDate", "totalAmount") VALUES (${newInvoiceId}, ${invoiceNumber}, ${customerId}, ${new Date().toISOString()}, ${totalAmount})`
                 ];
 
@@ -251,7 +251,8 @@ async function handleInvoices(req: VercelRequest, res: VercelResponse, sql: any)
                     } else {
                         const newQuantity = product.quantity - item.quantity;
                         if (newQuantity < 0) throw new Error(`Insufficient stock for ${product.productName}.`);
-                        queries.push(sql`UPDATE products SET quantity = ${newQuantity}, status = ${newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold} WHERE id = ${product.id};`);
+                        const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
+                        queries.push(sql`UPDATE products SET quantity = ${newQuantity}, status = ${newStatus}, "invoiceId" = ${newInvoiceId}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null} WHERE id = ${product.id};`);
                     }
                 }
 
@@ -306,15 +307,17 @@ async function handlePurchaseOrders(req: VercelRequest, res: VercelResponse, sql
                     const commonData = { ...batch.productInfo, status: ProductStatus.Available, purchaseOrderId: newPoId };
                     if (batch.details.trackingType === 'imei') {
                         for (const imei of batch.details.imeis) {
-                            productsToInsert.push({ ...commonData, id: randomUUID(), imei, quantity: 1, trackingType: 'imei' as const });
+                            const newProduct = { ...commonData, id: randomUUID(), imei, quantity: 1, trackingType: 'imei' as const };
+                            productsToInsert.push(newProduct);
                             totalCost += commonData.purchasePrice;
                         }
                     } else {
-                        productsToInsert.push({ ...commonData, id: randomUUID(), imei: null, quantity: batch.details.quantity, trackingType: 'quantity' as const });
+                        const newProduct = { ...commonData, id: randomUUID(), imei: null, quantity: batch.details.quantity, trackingType: 'quantity' as const };
+                        productsToInsert.push(newProduct);
                         totalCost += commonData.purchasePrice * batch.details.quantity;
                     }
                 }
-                const queries: SQLExecutable[] = [
+                const queries = [
                     sql`INSERT INTO purchase_orders (id, "poNumber", "supplierId", "issueDate", "totalCost", status, notes) VALUES (${newPoId}, ${poDetails.poNumber}, ${poDetails.supplierId}, ${new Date().toISOString()}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})`
                 ];
                 for (const p of productsToInsert) {

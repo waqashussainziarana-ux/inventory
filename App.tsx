@@ -665,7 +665,7 @@ const App: React.FC = () => {
             existingImeis={existingImeis}
             onCreatePurchaseOrder={handleCreatePurchaseOrder}
             onClose={() => setPurchaseOrderModalOpen(false)}
-            nextPoNumber={`PO-${purchaseOrders.length + 1}`}
+            nextPoNumber={`PO-${String(purchaseOrders.length + 1).padStart(4, '0')}`}
           />
       </Modal>
       
@@ -680,4 +680,35 @@ const App: React.FC = () => {
         )}
       </Modal>
       
-       <Modal isOpen={isCustomerModalOpen} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} title={customerToEdit ? "Edit Customer
+      <Modal isOpen={isCustomerModalOpen} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} title={customerToEdit ? "Edit Customer" : "Add New Customer"}>
+        <CustomerForm 
+          onSave={handleSaveCustomer} 
+          onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} 
+          customer={customerToEdit} 
+        />
+      </Modal>
+
+      <Modal isOpen={isSupplierModalOpen} onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} title={supplierToEdit ? "Edit Supplier" : "Add New Supplier"}>
+          <SupplierForm 
+            onSave={handleSaveSupplier} 
+            onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} 
+            supplier={supplierToEdit} 
+          />
+      </Modal>
+
+      {documentToPrint?.type === 'invoice' && (
+        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+          <InvoicePDF invoice={documentToPrint.data as Invoice} />
+        </div>
+      )}
+      {documentToPrint?.type === 'po' && (
+        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+          <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />
+        </div>
+      )}
+      
+    </div>
+  );
+};
+
+export default App;
