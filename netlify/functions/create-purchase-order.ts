@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
-import { neon } from '@netlify/neon';
+import { neon, SQLExecutable } from '@netlify/neon';
 import { NewProductInfo, ProductStatus, PurchaseOrderStatus } from '../../types';
+import { randomUUID } from 'crypto';
 
 type ProductBatch = {
     productInfo: NewProductInfo;
@@ -30,76 +31,97 @@ const handler: Handler = async (event, context) => {
         return { statusCode: 404, body: 'Supplier not found.' };
     }
 
-    const [{po, newProducts}] = await sql.transaction(async (tx) => {
-        let totalCost = 0;
-        const allNewProducts = [];
-        for (const batch of productsData) {
-            if (batch.details.trackingType === 'imei') {
-                for (const imei of batch.details.imeis) {
-                    const product = { ...batch.productInfo, imei, quantity: 1, trackingType: 'imei' as const };
-                    allNewProducts.push(product);
-                    totalCost += product.purchasePrice;
-                }
-            } else {
-                const product = { ...batch.productInfo, quantity: batch.details.quantity, trackingType: 'quantity' as const };
-                allNewProducts.push(product);
-                totalCost += product.purchasePrice * product.quantity;
-            }
-        }
+    // --- 1. PREPARE ALL DATA OUTSIDE TRANSACTION ---
+    let totalCost = 0;
+    const productsToInsert = [];
+    const newPoId = randomUUID();
+    const issueDate = new Date().toISOString();
 
-        const [poRow] = await tx`
-            INSERT INTO purchase_orders ("poNumber", "supplierId", "issueDate", "totalCost", status, notes)
-            VALUES (${poDetails.poNumber}, ${poDetails.supplierId}, ${new Date().toISOString()}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})
-            RETURNING *;
-        `;
-        
-        if (allNewProducts.length === 0) {
-            const finalPO = { ...poRow, supplierName: supplier.name, totalCost: parseFloat(poRow.totalCost), productIds: [] };
-            return [{ po: finalPO, newProducts: [] }];
-        }
-
-        const productsToInsert = allNewProducts.map(p => ({
-            id: crypto.randomUUID(),
-            productName: p.productName,
-            category: p.category,
-            purchaseDate: p.purchaseDate,
-            purchasePrice: p.purchasePrice,
-            sellingPrice: p.sellingPrice,
+    for (const batch of productsData) {
+        const commonProductData = {
+            productName: batch.productInfo.productName,
+            category: batch.productInfo.category,
+            purchaseDate: batch.productInfo.purchaseDate,
+            purchasePrice: batch.productInfo.purchasePrice,
+            sellingPrice: batch.productInfo.sellingPrice,
             status: ProductStatus.Available,
-            notes: p.notes || null,
-            purchaseOrderId: poRow.id,
-            trackingType: p.trackingType,
-            imei: p.imei || null,
-            quantity: p.quantity,
+            notes: batch.productInfo.notes || null,
+            purchaseOrderId: newPoId,
             customerName: null,
             invoiceId: null,
-        }));
-        
-        const insertedProductRows = await tx`
-            INSERT INTO products ${tx(productsToInsert, 'id', 'productName', 'category', 'purchaseDate', 'purchasePrice', 'sellingPrice', 'status', 'notes', 'purchaseOrderId', 'trackingType', 'imei', 'quantity', 'customerName', 'invoiceId')}
-            RETURNING *;
-        `;
-        
-        const formattedNewProducts = insertedProductRows.map(p => ({
-            ...p,
-            purchasePrice: parseFloat(p.purchasePrice),
-            sellingPrice: parseFloat(p.sellingPrice),
-            quantity: parseInt(p.quantity, 10),
-        }));
-
-        const finalPO = { 
-            ...poRow, 
-            supplierName: supplier.name, 
-            totalCost: parseFloat(poRow.totalCost), 
-            productIds: formattedNewProducts.map(p => p.id) 
         };
-        return [{ po: finalPO, newProducts: formattedNewProducts }];
-    });
+
+        if (batch.details.trackingType === 'imei') {
+            for (const imei of batch.details.imeis) {
+                const product = { 
+                    ...commonProductData, 
+                    id: randomUUID(),
+                    imei, 
+                    quantity: 1, 
+                    trackingType: 'imei' as const 
+                };
+                productsToInsert.push(product);
+                totalCost += product.purchasePrice;
+            }
+        } else {
+            const product = { 
+                ...commonProductData,
+                id: randomUUID(),
+                imei: null, 
+                quantity: batch.details.quantity, 
+                trackingType: 'quantity' as const 
+            };
+            productsToInsert.push(product);
+            totalCost += product.purchasePrice * product.quantity;
+        }
+    }
+
+    // --- 2. BUILD QUERY ARRAY ---
+    const queries: SQLExecutable[] = [];
+
+    queries.push(sql`
+        INSERT INTO purchase_orders (id, "poNumber", "supplierId", "issueDate", "totalCost", status, notes)
+        VALUES (${newPoId}, ${poDetails.poNumber}, ${poDetails.supplierId}, ${issueDate}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})
+    `);
+
+    for (const p of productsToInsert) {
+        queries.push(sql`
+            INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName", "invoiceId")
+            VALUES (${p.id}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, ${p.status}, ${p.notes}, ${p.purchaseOrderId}, ${p.trackingType}, ${p.imei}, ${p.quantity}, ${p.customerName}, ${p.invoiceId})
+        `);
+    }
+
+    // --- 3. EXECUTE TRANSACTION ---
+    if (queries.length > 0) {
+        await sql.transaction(queries);
+    }
+    
+    // --- 4. FETCH AND RETURN CREATED DATA ---
+    const [createdPoRow] = await sql`
+        SELECT * FROM purchase_orders WHERE id = ${newPoId}
+    `;
+    const createdProductRows = await sql`
+        SELECT * FROM products WHERE "purchaseOrderId" = ${newPoId}
+    `;
+
+    const finalPO = {
+        ...createdPoRow,
+        supplierName: supplier.name,
+        totalCost: parseFloat(createdPoRow.totalCost),
+        productIds: createdProductRows.map(p => p.id)
+    };
+    
+    const newProducts = createdProductRows.map(p => ({
+        ...p,
+        purchasePrice: parseFloat(p.purchasePrice),
+        sellingPrice: parseFloat(p.sellingPrice),
+        quantity: parseInt(p.quantity, 10),
+    }));
 
     return {
         statusCode: 201,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ po, newProducts }),
+        body: JSON.stringify({ po: finalPO, newProducts }),
     };
 
   } catch (error: any) {
