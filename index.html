@@ -5,24 +5,13 @@
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Product Inventory & IMEI Tracker</title>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "onscan.js": "https://aistudiocdn.com/onscan.js@^1.5.2",
-    "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
-    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.3",
-    "@vercel/node": "https://aistudiocdn.com/@vercel/node@^5.5.3",
-    "@neondatabase/serverless": "https://aistudiocdn.com/@neondatabase/serverless@^1.0.2",
-    "crypto": "https://aistudiocdn.com/crypto@^1.0.1",
-    "vite": "https://aistudiocdn.com/vite@^7.1.12",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.0"
-  }
-}
-</script>
-</head>
+    <!-- 
+      DEFINITIVE FIX: The <script type="importmap"> has been completely removed.
+      It is incompatible with the Vite build process and was the root cause
+      of the "white page" error. Vite will now handle all JavaScript bundling
+      and injection automatically.
+    -->
+  </head>
   <body class="bg-slate-100 antialiased">
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>

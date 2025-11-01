@@ -28,7 +28,7 @@ function handleError(res: VercelResponse, error: any, resourceName: string) {
 }
 
 
-// --- ENTITY HANDLERS ---
+// --- ENTITY HANDLERS (These functions remain unchanged) ---
 
 async function handleProducts(req: VercelRequest, res: VercelResponse, sql: any) {
     try {
@@ -368,28 +368,48 @@ async function handleDbSetup(req: VercelRequest, res: VercelResponse, sql: any) 
 // --- MAIN HANDLER / ROUTER ---
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    const sql = neon(process.env.DATABASE_URL!);
-    
-    // Vercel's rewrite gives us the original path in x-rewritten-path
-    const path = (req.headers['x-rewritten-path'] as string) || req.url!;
-    const endpoint = path.split('/')[2]?.split('?')[0] || '';
+    // Definitive Fix: Top-level error handling and environment variable check.
+    try {
+        // 1. Check for the DATABASE_URL environment variable FIRST.
+        if (!process.env.DATABASE_URL) {
+            console.error('FATAL: DATABASE_URL is not set.');
+            return res.status(500).json({
+                error: 'Server configuration error: Database connection string is missing.',
+                details: 'The DATABASE_URL environment variable is not set.'
+            });
+        }
 
-    switch (endpoint) {
-        case 'products':
-            return handleProducts(req, res, sql);
-        case 'customers':
-            return handleCustomers(req, res, sql);
-        case 'categories':
-            return handleCategories(req, res, sql);
-        case 'suppliers':
-            return handleSuppliers(req, res, sql);
-        case 'invoices':
-            return handleInvoices(req, res, sql);
-        case 'purchase-orders':
-            return handlePurchaseOrders(req, res, sql);
-        case 'setup':
-            return handleDbSetup(req, res, sql);
-        default:
-            return res.status(404).json({ error: 'Endpoint not found' });
+        // 2. If the variable exists, create the database connection.
+        const sql = neon(process.env.DATABASE_URL);
+
+        // 3. Proceed with the routing logic.
+        const path = (req.headers['x-rewritten-path'] as string) || req.url!;
+        const endpoint = path.split('/')[2]?.split('?')[0] || '';
+
+        switch (endpoint) {
+            case 'products':
+                return await handleProducts(req, res, sql);
+            case 'customers':
+                return await handleCustomers(req, res, sql);
+            case 'categories':
+                return await handleCategories(req, res, sql);
+            case 'suppliers':
+                return await handleSuppliers(req, res, sql);
+            case 'invoices':
+                return await handleInvoices(req, res, sql);
+            case 'purchase-orders':
+                return await handlePurchaseOrders(req, res, sql);
+            case 'setup':
+                return await handleDbSetup(req, res, sql);
+            default:
+                return res.status(404).json({ error: 'Endpoint not found' });
+        }
+    } catch (error: any) {
+        // 4. Catch any other unexpected errors during execution.
+        console.error('Unhandled error in API handler:', error);
+        return res.status(500).json({
+            error: 'An unexpected server error occurred.',
+            details: error.message || String(error)
+        });
     }
 }
