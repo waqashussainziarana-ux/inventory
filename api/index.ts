@@ -5,24 +5,23 @@ import { randomUUID } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 
 // --- DATABASE CONNECTION (Lazy-Initialized Singleton) ---
-// This `sql` object is defined once in the global scope of the function instance.
-// The connection is established on the first query and then REUSED for all
-// subsequent "warm" invocations. This is the most performant and stable pattern.
 let sql: postgres.Sql;
 
 function getDbConnection() {
     if (!sql) {
         if (!process.env.DATABASE_URL) {
-            // This will cause the function to crash cleanly if the URL is not set.
             throw new Error('Server configuration error: DATABASE_URL environment variable is not set.');
         }
         sql = postgres(process.env.DATABASE_URL, {
             ssl: 'require',
-            max: 1, // A single connection is sufficient for a single serverless function invocation.
-            idle_timeout: 5, // Automatically close idle connections after 5 seconds
+            max: 1, 
+            idle_timeout: 5,
             connect_timeout: 10,
-            prepare: false, // Essential for compatibility with Supabase's PgBouncer.
+            prepare: false,
         });
+
+        // FIX: Property 'on' does not exist on type 'Sql<{}>'. The 'postgres.js' library
+        // handles connection errors automatically and does not use an event emitter pattern for errors.
     }
     return sql;
 }
