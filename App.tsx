@@ -70,8 +70,8 @@ const App: React.FC = () => {
       setNeedsDbSetup(false);
 
       const endpoints = [
-        'get-products', 'get-customers', 'get-categories', 
-        'get-suppliers', 'get-invoices', 'get-purchase-orders'
+        'products', 'customers', 'categories', 
+        'suppliers', 'invoices', 'purchase-orders'
       ];
       const responses = await Promise.all(endpoints.map(ep => fetch(`/api/${ep}`)));
 
@@ -134,7 +134,7 @@ const App: React.FC = () => {
     try {
         setIsSettingUpDb(true);
         setDataError(null);
-        const response = await fetch('/api/setup-database', { method: 'POST' });
+        const response = await fetch('/api/setup', { method: 'POST' });
         if (!response.ok) {
             throw new Error('Failed to initialize the database.');
         }
@@ -200,7 +200,7 @@ const App: React.FC = () => {
     }
 
     try {
-        const response = await fetch('/api/add-products', {
+        const response = await fetch('/api/products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newProducts.map(p => ({...p, id: crypto.randomUUID()}))),
@@ -222,7 +222,7 @@ const App: React.FC = () => {
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
     try {
-        const response = await fetch('/api/update-product', {
+        const response = await fetch('/api/products', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedProduct),
@@ -242,7 +242,7 @@ const App: React.FC = () => {
   const handleDeleteProduct = async (productId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this product? This action cannot be undone.')) {
         try {
-            const response = await fetch('/api/delete-product', {
+            const response = await fetch('/api/products', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: productId }),
@@ -274,7 +274,7 @@ const App: React.FC = () => {
 
   const handleCreateInvoice = useCallback(async (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
       try {
-        const response = await fetch('/api/create-invoice', {
+        const response = await fetch('/api/invoices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ customerId, items }),
@@ -300,7 +300,7 @@ const App: React.FC = () => {
     productsData: { productInfo: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number } }[]
 ) => {
     try {
-        const response = await fetch('/api/create-purchase-order', {
+        const response = await fetch('/api/purchase-orders', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ poDetails, productsData }),
@@ -328,7 +328,7 @@ const App: React.FC = () => {
         return undefined;
     }
     try {
-        const response = await fetch('/api/save-category', {
+        const response = await fetch('/api/categories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name }),
@@ -351,7 +351,7 @@ const App: React.FC = () => {
         return;
     }
     try {
-        await fetch('/api/delete-category', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+        await fetch('/api/categories', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setCategories(prev => prev.filter(c => c.id !== id));
     } catch (error) { console.error(error); alert('Error: Could not delete category.'); }
   };
@@ -360,7 +360,7 @@ const App: React.FC = () => {
   const handleSaveCustomer = async (customerData: Omit<Customer, 'id'>) => {
     const customerToSave = customerToEdit ? { ...customerData, id: customerToEdit.id } : customerData;
     try {
-        const response = await fetch('/api/save-customer', {
+        const response = await fetch('/api/customers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(customerToSave),
@@ -383,7 +383,7 @@ const App: React.FC = () => {
         return undefined;
     }
     try {
-        const response = await fetch('/api/save-customer', {
+        const response = await fetch('/api/customers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, phone }),
@@ -410,7 +410,7 @@ const App: React.FC = () => {
         return;
     }
     try {
-        await fetch('/api/delete-customer', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+        await fetch('/api/customers', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setCustomers(prev => prev.filter(c => c.id !== id));
     } catch (error) { console.error(error); alert('Error: Could not delete customer.'); }
   };
@@ -419,7 +419,7 @@ const App: React.FC = () => {
  const handleSaveSupplier = async (supplierData: Omit<Supplier, 'id'>) => {
     const supplierToSave = supplierToEdit ? { ...supplierData, id: supplierToEdit.id } : supplierData;
     try {
-        const response = await fetch('/api/save-supplier', {
+        const response = await fetch('/api/suppliers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(supplierToSave),
@@ -456,7 +456,7 @@ const App: React.FC = () => {
         return;
     }
      try {
-        await fetch('/api/delete-supplier', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+        await fetch('/api/suppliers', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
         setSuppliers(prev => prev.filter(s => s.id !== id));
     } catch (error) { console.error(error); alert('Error: Could not delete supplier.'); }
   };
@@ -508,7 +508,7 @@ const App: React.FC = () => {
         <div className="text-center py-20 p-4 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-lg font-semibold text-red-700">Failed to load inventory</p>
           <p className="text-sm text-red-600 mt-2">{dataError}</p>
-          <p className="text-xs text-slate-500 mt-4">Please ensure your database is running and the `DATABASE_URL` is correctly set in your Netlify environment variables.</p>
+          <p className="text-xs text-slate-500 mt-4">Please ensure your database is running and the `DATABASE_URL` is correctly set in your Vercel environment variables.</p>
         </div>
       );
     }
@@ -680,27 +680,4 @@ const App: React.FC = () => {
         )}
       </Modal>
       
-       <Modal isOpen={isCustomerModalOpen} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} title={customerToEdit ? "Edit Customer" : "Add New Customer"}>
-        <CustomerForm 
-            onSave={handleSaveCustomer} 
-            onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} 
-            customer={customerToEdit}
-        />
-      </Modal>
-       <Modal isOpen={isSupplierModalOpen} onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} title={supplierToEdit ? "Edit Supplier" : "Add New Supplier"}>
-        <SupplierForm 
-            onSave={handleSaveSupplier} 
-            onClose={() => { setSupplierModalOpen(false); setSupplierToEdit(null); }} 
-            supplier={supplierToEdit}
-        />
-      </Modal>
-
-      <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -1 }}>
-        {documentToPrint?.type === 'invoice' && <InvoicePDF invoice={documentToPrint.data as Invoice} />}
-        {documentToPrint?.type === 'po' && <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />}
-      </div>
-    </div>
-  );
-};
-
-export default App;
+       <Modal isOpen={isCustomerModalOpen} onClose={() => { setCustomerModalOpen(false); setCustomerToEdit(null); }} title={customerToEdit ? "Edit Customer
