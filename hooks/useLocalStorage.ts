@@ -2,10 +2,11 @@
 // It is kept temporarily to support Invoices, Purchase Orders, and Suppliers.
 import React, { useState, useEffect } from 'react';
 
+// Fix: Completed the implementation of getStorageValue and the useLocalStorage hook.
 function getStorageValue<T>(key: string, defaultValue: T): T {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem(key);
-    if (saved !== null) {
+    if (saved) {
       try {
         return JSON.parse(saved);
       } catch (error) {
