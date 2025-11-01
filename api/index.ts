@@ -4,6 +4,30 @@ import { Product, ProductStatus, Invoice, InvoiceItem, Customer, Supplier, NewPr
 import { randomUUID } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 
+// --- DATABASE CONNECTION (Lazy-Initialized Singleton) ---
+// This `sql` object is defined once in the global scope of the function instance.
+// The connection is established on the first query and then REUSED for all
+// subsequent "warm" invocations. This is the most performant and stable pattern.
+let sql: postgres.Sql;
+
+function getDbConnection() {
+    if (!sql) {
+        if (!process.env.DATABASE_URL) {
+            // This will cause the function to crash cleanly if the URL is not set.
+            throw new Error('Server configuration error: DATABASE_URL environment variable is not set.');
+        }
+        sql = postgres(process.env.DATABASE_URL, {
+            ssl: 'require',
+            max: 1, // A single connection is sufficient for a single serverless function invocation.
+            idle_timeout: 5, // Automatically close idle connections after 5 seconds
+            connect_timeout: 10,
+            prepare: false, // Essential for compatibility with Supabase's PgBouncer.
+        });
+    }
+    return sql;
+}
+
+
 // --- TYPES ---
 
 type ProductBatch = {
@@ -57,7 +81,6 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, db: postg
                 // Generate IDs on the server
                 const newProductsWithIds: Product[] = newProductsData.map(p => ({ ...p, id: randomUUID() }));
 
-                // FIX: Replaced 'transaction' with 'begin' to resolve TypeScript error.
                 const transactionResults = await db.begin(async (sql) => {
                     const queries = newProductsWithIds.map(product => sql`
                         INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
@@ -262,7 +285,6 @@ async function handleInvoices(req: VercelRequest, res: VercelResponse, db: postg
                 const invoiceNumber = `INV-${new Date().getFullYear()}-${String(parseInt(count, 10) + 1).padStart(4, '0')}`;
                 const newInvoiceId = randomUUID();
                 
-                // FIX: Replaced 'transaction' with 'begin' to resolve TypeScript error.
                 await db.begin(async (sql) => {
                     await sql`INSERT INTO invoices (id, "invoiceNumber", "customerId", "issueDate", "totalAmount") VALUES (${newInvoiceId}, ${invoiceNumber}, ${customerId}, ${new Date().toISOString()}, ${totalAmount})`;
 
@@ -340,7 +362,6 @@ async function handlePurchaseOrders(req: VercelRequest, res: VercelResponse, db:
                     }
                 }
                 
-                // FIX: Replaced 'transaction' with 'begin' to resolve TypeScript error.
                 await db.begin(async (sql) => {
                     await sql`INSERT INTO purchase_orders (id, "poNumber", "supplierId", "issueDate", "totalCost", status, notes) VALUES (${newPoId}, ${poDetails.poNumber}, ${poDetails.supplierId}, ${new Date().toISOString()}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})`;
                     
@@ -434,7 +455,6 @@ async function handleDbSetup(req: VercelRequest, res: VercelResponse, db: postgr
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
     try {
-        // FIX: Replaced 'transaction' with 'begin' to resolve TypeScript error.
         await db.begin(async (sql) => {
             await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL UNIQUE, email VARCHAR(255), phone VARCHAR(50));`;
             await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL);`;
@@ -478,23 +498,8 @@ async function handleDbStatus(res: VercelResponse, db: postgres.Sql) {
 // --- MAIN HANDLER / ROUTER ---
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    let sql: postgres.Sql | null = null;
     try {
-        // --- DATABASE CONNECTION ---
-        // This is the new, robust connection strategy.
-        // A fresh connection is established for every single request.
-        if (!process.env.DATABASE_URL) {
-            console.error('FATAL: DATABASE_URL environment variable is not set.');
-            return res.status(500).json({ error: 'Server configuration error: Database URL is missing.' });
-        }
-        
-        sql = postgres(process.env.DATABASE_URL, {
-            ssl: 'require',
-            max: 1, // A single connection is sufficient for a single serverless function invocation.
-            idle_timeout: 5,
-            connect_timeout: 10,
-            prepare: false, // Essential for Supabase PgBouncer compatibility.
-        });
+        const db = getDbConnection();
         
         // --- ROUTING ---
         const path = (req.headers['x-rewritten-path'] as string) || req.url!;
@@ -502,38 +507,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         switch (endpoint) {
             case 'products':
-                return await handleProducts(req, res, sql);
+                return await handleProducts(req, res, db);
             case 'customers':
-                return await handleCustomers(req, res, sql);
+                return await handleCustomers(req, res, db);
             case 'categories':
-                return await handleCategories(req, res, sql);
+                return await handleCategories(req, res, db);
             case 'suppliers':
-                return await handleSuppliers(req, res, sql);
+                return await handleSuppliers(req, res, db);
             case 'invoices':
-                return await handleInvoices(req, res, sql);
+                return await handleInvoices(req, res, db);
             case 'purchase-orders':
-                return await handlePurchaseOrders(req, res, sql);
+                return await handlePurchaseOrders(req, res, db);
             case 'generate-insights':
                 return await handleGenerateInsights(req, res);
             case 'setup':
-                return await handleDbSetup(req, res, sql);
+                return await handleDbSetup(req, res, db);
             case 'db-status':
-                return await handleDbStatus(res, sql);
+                return await handleDbStatus(res, db);
             default:
                 return res.status(404).json({ error: 'Endpoint not found' });
         }
     } catch (error) {
         console.error('An unexpected error occurred in the main handler:', error);
-        // Serialize the error to get more details in the response.
         const errorDetails = JSON.parse(JSON.stringify(error, Object.getOwnPropertyNames(error)));
         return res.status(500).json({ 
             error: 'An unexpected server error occurred.', 
             details: errorDetails,
         });
-    } finally {
-        // Ensure the connection is closed after the request is handled.
-        if (sql) {
-            await sql.end({ timeout: 5 });
-        }
     }
 }
