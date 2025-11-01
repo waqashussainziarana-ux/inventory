@@ -151,7 +151,8 @@ async function handleCategories(req: VercelRequest, res: VercelResponse, sql: an
                 
                 // Now, unconditionally fetch the category by its unique name.
                 // This guarantees we return the correct, existing or newly-created, category.
-                const [category] = await sql`SELECT * FROM categories WHERE name = ${name}`;
+                const categoryRows = await sql`SELECT * FROM categories WHERE name = ${name}`;
+                const category = categoryRows[0];
 
                 if (!category) {
                     // This case should be virtually impossible if the insert works, but it's a good safeguard.
