@@ -6,19 +6,26 @@ import { GoogleGenAI } from '@google/genai';
 
 // --- DATABASE INITIALIZATION ---
 
-// Throw an error at build time if the DATABASE_URL is not set. This prevents runtime errors.
-if (!process.env.DATABASE_URL) {
-    throw new Error('FATAL: DATABASE_URL environment variable is not set.');
-}
+let sql: postgres.Sql | null = null;
 
-// Initialize the connection pool once per function instance with serverless-specific options.
-// This is the recommended practice for environments like Vercel to prevent connection issues.
-const sql = postgres(process.env.DATABASE_URL, {
-    ssl: 'require',          // Enforce secure SSL connection
-    max: 1,                  // Use a single connection per function instance
-    idle_timeout: 5,         // Close idle connections after 5 seconds
-    connect_timeout: 10,     // Timeout for new connections
-});
+function getDbConnection() {
+    if (!sql) {
+        if (!process.env.DATABASE_URL) {
+            throw new Error('FATAL: DATABASE_URL environment variable is not set.');
+        }
+        console.log('Initializing new database connection...');
+        // Initialize the connection pool with serverless-specific options.
+        // This is the recommended practice for environments like Vercel.
+        sql = postgres(process.env.DATABASE_URL, {
+            ssl: 'require',          // Enforce secure SSL connection
+            max: 1,                  // Use a single connection per function instance
+            idle_timeout: 5,         // Close idle connections after 5 seconds
+            connect_timeout: 10,     // Timeout for new connections
+            prepare: false,          // Disable prepared statements for Supabase PgBouncer compatibility
+        });
+    }
+    return sql;
+}
 
 
 // --- TYPES ---
@@ -43,7 +50,6 @@ interface CreateInvoicePayload {
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`Full Database Error in ${resourceName}:`, error);
     if (error.code === '42P01') { // undefined_table
-        // Fix: Corrected typo from `resourcename` to `resourceName`.
         return res.status(404).json({ error: `Database not initialized. ${resourceName} table missing.`, code: 'DB_TABLE_NOT_FOUND' });
     }
     const errorMessage = `Database query failed for ${resourceName}. Code: ${error.code || 'N/A'}`;
@@ -75,12 +81,15 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, db: postg
                 // Generate IDs on the server
                 const newProductsWithIds: Product[] = newProductsData.map(p => ({ ...p, id: randomUUID() }));
 
-                const queries = newProductsWithIds.map(product => db`
-                    INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
-                    VALUES (${product.id}, ${product.productName}, ${product.category}, ${product.purchaseDate}, ${product.purchasePrice}, ${product.sellingPrice}, ${product.status}, ${product.notes || null}, ${product.purchaseOrderId || null}, ${product.trackingType}, ${product.imei || null}, ${product.quantity}, ${product.customerName || null})
-                    RETURNING *;
-                `);
-                const transactionResults = await db.transaction(queries);
+                // FIX: Refactored to use callback-style transaction to resolve type error.
+                const transactionResults = await db.transaction(async (sql) => {
+                    const queries = newProductsWithIds.map(product => sql`
+                        INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity, "customerName")
+                        VALUES (${product.id}, ${product.productName}, ${product.category}, ${product.purchaseDate}, ${product.purchasePrice}, ${product.sellingPrice}, ${product.status}, ${product.notes || null}, ${product.purchaseOrderId || null}, ${product.trackingType}, ${product.imei || null}, ${product.quantity}, ${product.customerName || null})
+                        RETURNING *;
+                    `);
+                    return await Promise.all(queries);
+                });
                 const insertedProducts = transactionResults.map((res: any) => res[0]);
                 const formattedProducts = insertedProducts.map((p: any) => ({
                     ...p,
@@ -101,7 +110,7 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, db: postg
                     WHERE id = ${updatedProduct.id}
                     RETURNING *;
                 `;
-                if (rows.length === 0) return res.status(404).json({ error: 'Product not found.' });
+                if (rows.count === 0) return res.status(404).json({ error: 'Product not found.' });
                 const product = {
                     ...rows[0],
                     purchasePrice: parseFloat(rows[0].purchasePrice),
@@ -114,7 +123,7 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, db: postg
                 const { id } = req.body;
                 if (!id) return res.status(400).json({ error: 'Bad Request: Product ID is required.' });
                 const result = await db`DELETE FROM products WHERE id = ${id}`;
-                if (result.rowCount === 0) return res.status(404).json({ error: 'Product not found.' });
+                if (result.count === 0) return res.status(404).json({ error: 'Product not found.' });
                 return res.status(200).json({ success: true });
             }
             default:
@@ -170,20 +179,15 @@ async function handleCategories(req: VercelRequest, res: VercelResponse, db: pos
                 const { name } = req.body;
                 if (!name) return res.status(400).json({ error: 'Bad Request: Category name is required.' });
                 
-                // Atomically insert the category, ignoring if it already exists. This prevents race conditions.
                 await db`INSERT INTO categories (id, name) VALUES (${randomUUID()}, ${name}) ON CONFLICT (name) DO NOTHING;`;
                 
-                // Now, unconditionally fetch the category by its unique name.
-                // This guarantees we return the correct, existing or newly-created, category.
                 const categoryRows = await db`SELECT * FROM categories WHERE name = ${name}`;
                 const category = categoryRows[0];
 
                 if (!category) {
-                    // This case should be virtually impossible if the insert works, but it's a good safeguard.
                     throw new Error("Failed to create or find the category after insertion.");
                 }
 
-                // Return 200 OK since we are returning a category, whether it was just created or already existed.
                 return res.status(200).json(category);
             }
             case 'DELETE': {
@@ -213,10 +217,8 @@ async function handleSuppliers(req: VercelRequest, res: VercelResponse, db: post
                 if (!supplier.name) return res.status(400).json({ error: 'Bad Request: Name is required.' });
                 let rows;
                 if (supplier.id) {
-                    // Handle update
                     rows = await db`UPDATE suppliers SET name = ${supplier.name}, email = ${supplier.email || null}, phone = ${supplier.phone || null} WHERE id = ${supplier.id} RETURNING *;`;
                 } else {
-                    // Handle insert or update on conflict (upsert) to prevent race conditions.
                     rows = await db`
                         INSERT INTO suppliers (id, name, email, phone) 
                         VALUES (${randomUUID()}, ${supplier.name}, ${supplier.email || null}, ${supplier.phone || null}) 
@@ -284,24 +286,23 @@ async function handleInvoices(req: VercelRequest, res: VercelResponse, db: postg
                 const invoiceNumber = `INV-${new Date().getFullYear()}-${String(parseInt(count, 10) + 1).padStart(4, '0')}`;
                 const newInvoiceId = randomUUID();
                 
-                const queries = [
-                    db`INSERT INTO invoices (id, "invoiceNumber", "customerId", "issueDate", "totalAmount") VALUES (${newInvoiceId}, ${invoiceNumber}, ${customerId}, ${new Date().toISOString()}, ${totalAmount})`
-                ];
+                // FIX: Refactored to use callback-style transaction to resolve type error and ensure atomicity.
+                await db.transaction(async (sql) => {
+                    await sql`INSERT INTO invoices (id, "invoiceNumber", "customerId", "issueDate", "totalAmount") VALUES (${newInvoiceId}, ${invoiceNumber}, ${customerId}, ${new Date().toISOString()}, ${totalAmount})`;
 
-                for (const item of items) {
-                    const product = products.find((p: any) => p.id === item.productId)!;
-                    queries.push(db`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") VALUES (${newInvoiceId}, ${product.id}, ${product.productName}, ${product.imei || null}, ${item.quantity}, ${product.sellingPrice});`);
-                    if (product.trackingType === 'imei') {
-                        queries.push(db`UPDATE products SET status = ${ProductStatus.Sold}, "customerName" = ${customer.name}, "invoiceId" = ${newInvoiceId} WHERE id = ${product.id};`);
-                    } else {
-                        const newQuantity = product.quantity - item.quantity;
-                        if (newQuantity < 0) throw new Error(`Insufficient stock for ${product.productName}.`);
-                        const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
-                        queries.push(db`UPDATE products SET quantity = ${newQuantity}, status = ${newStatus}, "invoiceId" = ${newInvoiceId}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null} WHERE id = ${product.id};`);
+                    for (const item of items) {
+                        const product = products.find((p: any) => p.id === item.productId)!;
+                        await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") VALUES (${newInvoiceId}, ${product.id}, ${product.productName}, ${product.imei || null}, ${item.quantity}, ${product.sellingPrice});`;
+                        if (product.trackingType === 'imei') {
+                            await sql`UPDATE products SET status = ${ProductStatus.Sold}, "customerName" = ${customer.name}, "invoiceId" = ${newInvoiceId} WHERE id = ${product.id};`;
+                        } else {
+                            const newQuantity = product.quantity - item.quantity;
+                            if (newQuantity < 0) throw new Error(`Insufficient stock for ${product.productName}.`);
+                            const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
+                            await sql`UPDATE products SET quantity = ${newQuantity}, status = ${newStatus}, "invoiceId" = ${newInvoiceId}, "customerName" = ${newStatus === ProductStatus.Sold ? customer.name : null} WHERE id = ${product.id};`;
+                        }
                     }
-                }
-
-                await db.transaction(queries);
+                });
 
                 const [createdInvoiceRow] = await db`SELECT i.*, c.name as "customerName" FROM invoices i JOIN customers c ON i."customerId" = c.id WHERE i.id = ${newInvoiceId}`;
                 const createdInvoiceItems = await db`SELECT * FROM invoice_items WHERE "invoiceId" = ${newInvoiceId}`;
@@ -362,13 +363,14 @@ async function handlePurchaseOrders(req: VercelRequest, res: VercelResponse, db:
                         totalCost += commonData.purchasePrice * batch.details.quantity;
                     }
                 }
-                const queries = [
-                    db`INSERT INTO purchase_orders (id, "poNumber", "supplierId", "issueDate", "totalCost", status, notes) VALUES (${newPoId}, ${poDetails.poNumber}, ${poDetails.supplierId}, ${new Date().toISOString()}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})`
-                ];
-                for (const p of productsToInsert) {
-                    queries.push(db`INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity) VALUES (${p.id}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, ${p.status}, ${p.notes}, ${p.purchaseOrderId}, ${p.trackingType}, ${p.imei || null}, ${p.quantity})`);
-                }
-                await db.transaction(queries);
+                // FIX: Refactored to use callback-style transaction to resolve type error and ensure atomicity.
+                await db.transaction(async (sql) => {
+                    await sql`INSERT INTO purchase_orders (id, "poNumber", "supplierId", "issueDate", "totalCost", status, notes) VALUES (${newPoId}, ${poDetails.poNumber}, ${poDetails.supplierId}, ${new Date().toISOString()}, ${totalCost}, ${poDetails.status}, ${poDetails.notes || null})`;
+                    
+                    for (const p of productsToInsert) {
+                        await sql`INSERT INTO products (id, "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, notes, "purchaseOrderId", "trackingType", imei, quantity) VALUES (${p.id}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, ${p.status}, ${p.notes}, ${p.purchaseOrderId}, ${p.trackingType}, ${p.imei || null}, ${p.quantity})`;
+                    }
+                });
                 
                 const [createdPoRow] = await db`SELECT * FROM purchase_orders WHERE id = ${newPoId}`;
                 const finalPO = { ...createdPoRow, supplierName: supplier.name, totalCost: parseFloat(createdPoRow.totalCost), productIds: productsToInsert.map(p => p.id) };
@@ -455,15 +457,16 @@ async function handleDbSetup(req: VercelRequest, res: VercelResponse, db: postgr
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
     try {
-        await db.transaction([
-            db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL UNIQUE, email VARCHAR(255), phone VARCHAR(50));`,
-            db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL);`,
-            db`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL UNIQUE);`,
-            db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "poNumber" VARCHAR(255) NOT NULL UNIQUE, "supplierId" UUID REFERENCES suppliers(id), "issueDate" DATE NOT NULL, "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`,
-            db`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceNumber" VARCHAR(255) NOT NULL UNIQUE, "customerId" UUID REFERENCES customers(id), "issueDate" DATE NOT NULL, "totalAmount" NUMERIC(10, 2) NOT NULL);`,
-            db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" VARCHAR(255), "purchaseOrderId" VARCHAR(255), "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255) UNIQUE, quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`,
-            db`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`,
-        ]);
+        // FIX: Refactored to use callback-style transaction to resolve type error.
+        await db.transaction(async (sql) => {
+            await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL UNIQUE, email VARCHAR(255), phone VARCHAR(50));`;
+            await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL);`;
+            await sql`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL UNIQUE);`;
+            await sql`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "poNumber" VARCHAR(255) NOT NULL UNIQUE, "supplierId" UUID REFERENCES suppliers(id), "issueDate" DATE NOT NULL, "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
+            await sql`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceNumber" VARCHAR(255) NOT NULL UNIQUE, "customerId" UUID REFERENCES customers(id), "issueDate" DATE NOT NULL, "totalAmount" NUMERIC(10, 2) NOT NULL);`;
+            await sql`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" VARCHAR(255), "purchaseOrderId" VARCHAR(255), "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255) UNIQUE, quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
+            await sql`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
+        });
         const [{ count: catCount }] = await db`SELECT COUNT(*) FROM categories`;
         if (Number(catCount) === 0) await db`INSERT INTO categories (name) VALUES ('Smartphones'), ('Laptops'), ('Accessories'), ('Tablets');`;
         const [{ count: custCount }] = await db`SELECT COUNT(*) FROM customers`;
@@ -502,26 +505,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Vercel's rewrite gives us the original path in x-rewritten-path
         const path = (req.headers['x-rewritten-path'] as string) || req.url!;
         const endpoint = path.split('/')[2]?.split('?')[0] || '';
+        const db = getDbConnection();
 
         switch (endpoint) {
             case 'products':
-                return await handleProducts(req, res, sql);
+                return await handleProducts(req, res, db);
             case 'customers':
-                return await handleCustomers(req, res, sql);
+                return await handleCustomers(req, res, db);
             case 'categories':
-                return await handleCategories(req, res, sql);
+                return await handleCategories(req, res, db);
             case 'suppliers':
-                return await handleSuppliers(req, res, sql);
+                return await handleSuppliers(req, res, db);
             case 'invoices':
-                return await handleInvoices(req, res, sql);
+                return await handleInvoices(req, res, db);
             case 'purchase-orders':
-                return await handlePurchaseOrders(req, res, sql);
+                return await handlePurchaseOrders(req, res, db);
             case 'generate-insights':
                 return await handleGenerateInsights(req, res);
             case 'setup':
-                return await handleDbSetup(req, res, sql);
+                return await handleDbSetup(req, res, db);
             case 'db-status':
-                return await handleDbStatus(res, sql);
+                return await handleDbStatus(res, db);
             default:
                 return res.status(404).json({ error: 'Endpoint not found' });
         }
