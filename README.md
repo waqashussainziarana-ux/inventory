@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Product Inventory & IMEI Tracker
 
-# Run and deploy your AI Studio app
+A comprehensive application to manage product inventory, track unique IMEI numbers, and handle sales history. This project is built with React, TypeScript, and TailwindCSS, and deployed on Vercel.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1Wxl4c1peyqJZgjEIIPETMpM0czvZi4pj
+-   Add products with IMEI or quantity-based tracking.
+-   Create and manage purchase orders from suppliers.
+-   Generate invoices for customers.
+-   Dashboard with key inventory and sales metrics.
+-   Manage customers, suppliers, and product categories.
+-   Search across all inventory and sales data.
+-   Archive sold or old products.
+-   Generate printable PDF invoices and purchase orders.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+-   **Frontend:** React, TypeScript, Vite
+-   **Styling:** TailwindCSS
+-   **Backend:** Vercel Serverless Functions (Node.js)
+-   **Database:** Neon (Serverless Postgres)
+-   **Deployment:** Vercel
 
+## Getting Started
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1.  **Clone the repository.**
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Set up environment variables:**
+    In your Vercel project settings, add an environment variable named `DATABASE_URL` with your Neon database connection string.
+4.  **Run the development server:**
+    ```bash
+    npm run dev
+    ```

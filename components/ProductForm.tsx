@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NewProductInfo, Category, ProductStatus } from '../types';
 import { CloseIcon, BarcodeIcon, PlusIcon } from './icons';
-
-// Add type declaration for the onscan.js library loaded from CDN
-declare const onscan: any;
+import onscan from 'onscan.js';
 
 interface ProductFormProps {
   onAddProducts: (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => Promise<any>;
@@ -71,8 +69,9 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             onscan.attachTo(document, {
                 onScan: handleScan,
                 reactToPaste: true,
-                minScanLength: 14,
-                maxScanLength: 16,
+                // Fix: Corrected property name from 'minScanLength' to 'minLength' and 'maxScanLength' to 'maxLength' to match the onscan.js API.
+                minLength: 14,
+                maxLength: 16,
                 keyCodeMapper: (e: KeyboardEvent) => onscan.decodeKeyEvent(e),
             });
         }
@@ -237,19 +236,19 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label htmlFor="productName" className="block text-sm font-medium text-slate-700">Product Name</label>
-          <input type="text" name="productName" id="productName" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" value={formData.productName} onChange={handleChange} />
+          <input type="text" name="productName" id="productName" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value={formData.productName} onChange={handleChange} />
         </div>
         <div>
           <label htmlFor="category" className="block text-sm font-medium text-slate-700">Category</label>
           {isAddingCategory ? (
             <div className="flex items-center gap-2 mt-1">
-                <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} autoFocus className="block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" placeholder="New category name" />
+                <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} autoFocus className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="New category name" />
                 <button type="button" onClick={handleAddNewCategory} className="px-3 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-hover">Add</button>
                 <button type="button" onClick={() => setIsAddingCategory(false)} className="text-slate-500 hover:text-slate-700"><CloseIcon className="w-5 h-5" /></button>
             </div>
           ) : (
             <div className="flex items-center gap-2 mt-1">
-                <select name="category" id="category" required value={formData.category} onChange={handleChange} className="block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                <select name="category" id="category" required value={formData.category} onChange={handleChange} className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                     {categories.length === 0 && <option value="" disabled>No categories available</option>}
                     {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                 </select>
@@ -261,20 +260,20 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
           <label htmlFor="purchaseDate" className="block text-sm font-medium text-slate-700">Purchase Date</label>
-          <input type="date" name="purchaseDate" id="purchaseDate" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" value={formData.purchaseDate} onChange={handleChange} />
+          <input type="date" name="purchaseDate" id="purchaseDate" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value={formData.purchaseDate} onChange={handleChange} />
         </div>
         <div>
           <label htmlFor="purchasePrice" className="block text-sm font-medium text-slate-700">Purchase Price (€)</label>
-          <input type="number" name="purchasePrice" id="purchasePrice" step="0.01" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" value={formData.purchasePrice} onChange={handleChange} />
+          <input type="number" name="purchasePrice" id="purchasePrice" step="0.01" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value={formData.purchasePrice} onChange={handleChange} />
         </div>
         <div>
           <label htmlFor="sellingPrice" className="block text-sm font-medium text-slate-700">Selling Price (€)</label>
-          <input type="number" name="sellingPrice" id="sellingPrice" step="0.01" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" value={formData.sellingPrice} onChange={handleChange} />
+          <input type="number" name="sellingPrice" id="sellingPrice" step="0.01" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value={formData.sellingPrice} onChange={handleChange} />
         </div>
       </div>
        <div>
           <label htmlFor="notes" className="block text-sm font-medium text-slate-700">Notes / Description (Optional)</label>
-          <textarea name="notes" id="notes" rows={2} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" value={formData.notes} onChange={handleChange}></textarea>
+          <textarea name="notes" id="notes" rows={2} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value={formData.notes} onChange={handleChange}></textarea>
         </div>
 
       {/* Tracking Type Section */}
@@ -301,7 +300,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
         {trackingType === 'quantity' ? (
           <div>
             <label htmlFor="quantity" className="block text-sm font-medium text-slate-700">Quantity</label>
-            <input type="number" name="quantity" id="quantity" min="1" step="1" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)} />
+            <input type="number" name="quantity" id="quantity" min="1" step="1" required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)} />
           </div>
         ) : (
           <div className="pt-2 space-y-6">
@@ -318,7 +317,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
              <div className="flex items-start gap-2">
               <div className="flex-grow">
                 <label htmlFor="imei" className="sr-only">Enter IMEI</label>
-                <input ref={imeiInputRef} type="text" name="imei" id="imei" value={currentImei} onChange={handleImeiChange} onKeyDown={handleImeiKeyDown} className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${imeiError ? 'border-red-500 ring-red-500' : 'border-slate-300 focus:border-primary focus:ring-primary'}`} placeholder="Enter 14-16 digit IMEI and press Add or Enter" />
+                <input ref={imeiInputRef} type="text" name="imei" id="imei" value={currentImei} onChange={handleImeiChange} onKeyDown={handleImeiKeyDown} className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${imeiError ? 'border-red-500 ring-red-500' : 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500'}`} placeholder="Enter 14-16 digit IMEI and press Add or Enter" />
                 {imeiError && <p className="mt-1 text-sm text-red-600">{imeiError}</p>}
               </div>
               <button type="button" onClick={handleAddImei} disabled={!currentImei.trim() || !!imeiError} className="mt-1 shrink-0 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add</button>

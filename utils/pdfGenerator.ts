@@ -1,7 +1,5 @@
-// This tells TypeScript that these variables are defined globally,
-// likely from a <script> tag in the HTML.
-declare const html2canvas: any;
-declare const jspdf: any;
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 export const downloadPdf = async (elementId: string, fileName: string): Promise<void> => {
   const element = document.getElementById(elementId);
@@ -18,7 +16,7 @@ export const downloadPdf = async (elementId: string, fileName: string): Promise<
     });
 
     const imgData = canvas.toDataURL('image/png');
-    const pdf = new jspdf.jsPDF({
+    const pdf = new jsPDF({
       orientation: 'p',
       unit: 'mm',
       format: 'a4',
