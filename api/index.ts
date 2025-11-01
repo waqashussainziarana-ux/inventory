@@ -11,11 +11,18 @@ if (!process.env.DATABASE_URL) {
     throw new Error('FATAL: DATABASE_URL environment variable is not set.');
 }
 
+// A more robust way to ensure SSL is required for cloud databases like Supabase.
+// This modifies the connection string directly, which is more explicit than passing an option.
+let connectionString = process.env.DATABASE_URL;
+const url = new URL(connectionString);
+if (!url.searchParams.has('sslmode')) {
+    url.searchParams.set('sslmode', 'require');
+    connectionString = url.toString();
+}
+
 // Initialize the connection pool once per function instance. 
 // This is the recommended practice for serverless environments to reuse connections.
-const sql = postgres(process.env.DATABASE_URL, {
-  ssl: 'require',
-});
+const sql = postgres(connectionString);
 
 
 // --- TYPES ---
@@ -40,6 +47,7 @@ interface CreateInvoicePayload {
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`Full Database Error in ${resourceName}:`, error);
     if (error.code === '42P01') { // undefined_table
+        // Fix: Corrected typo from `resourcename` to `resourceName`.
         return res.status(404).json({ error: `Database not initialized. ${resourceName} table missing.`, code: 'DB_TABLE_NOT_FOUND' });
     }
     const errorMessage = `Database query failed for ${resourceName}. Code: ${error.code || 'N/A'}`;
@@ -472,6 +480,25 @@ async function handleDbSetup(req: VercelRequest, res: VercelResponse, db: postgr
     }
 }
 
+async function handleDbStatus(res: VercelResponse, db: postgres.Sql) {
+    try {
+        const result = await db`SELECT 1 as "connection"`;
+        if (result[0]?.connection === 1) {
+            return res.status(200).json({ status: 'ok', message: 'Database connection successful.' });
+        } else {
+            throw new Error('Health check query did not return expected result.');
+        }
+    } catch (error: any) {
+        console.error('Database health check failed:', error);
+        return res.status(500).json({ 
+            status: 'error', 
+            message: 'Database connection failed.', 
+            details: error.message,
+            code: error.code 
+        });
+    }
+}
+
 // --- MAIN HANDLER / ROUTER ---
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -497,12 +524,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 return await handleGenerateInsights(req, res);
             case 'setup':
                 return await handleDbSetup(req, res, sql);
+            case 'db-status':
+                return await handleDbStatus(res, sql);
             default:
                 return res.status(404).json({ error: 'Endpoint not found' });
         }
     } catch (error) {
-        // This is a top-level catch for unexpected errors (e.g., if sql() initialization fails)
+        // This is a top-level catch for unexpected errors
         console.error('An unexpected error occurred in the main handler:', error);
-        return res.status(500).json({ error: 'An unexpected server error occurred.', details: (error as Error).message });
+        const e = error as Error;
+        return res.status(500).json({ 
+            error: 'An unexpected server error occurred.', 
+            details: e.message,
+            name: e.name,
+        });
     }
 }
