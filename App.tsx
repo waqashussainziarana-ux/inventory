@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Product, ProductStatus, NewProductInfo, Invoice, InvoiceItem, PurchaseOrder, Customer, Category, Supplier, PurchaseOrderStatus } from './types';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
 import ProductManagementList from './components/ProductManagementList';
@@ -18,27 +19,22 @@ import CustomerList from './components/CustomerList';
 import CustomerForm from './components/CustomerForm';
 import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
-import LoginScreen from './components/LoginScreen';
 import { downloadPdf } from './utils/pdfGenerator';
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, LogoutIcon, DownloadIcon } from './components/icons';
+import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, DownloadIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
 const App: React.FC = () => {
-  // --- Data Management ---
-  const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  // --- Data Management (using localStorage) ---
+  const [products, setProducts] = useLocalStorage<Product[]>('inventory-products', []);
+  const [customers, setCustomers] = useLocalStorage<Customer[]>('inventory-customers', [{ id: 'walk-in', name: 'Walk-in Customer', phone: 'N/A' }]);
+  const [categories, setCategories] = useLocalStorage<Category[]>('inventory-categories', [
+    { id: 'cat-1', name: 'Smartphones' }, { id: 'cat-2', name: 'Laptops' }, { id: 'cat-3', name: 'Accessories' }, { id: 'cat-4', name: 'Tablets' }
+  ]);
+  const [invoices, setInvoices] = useLocalStorage<Invoice[]>('inventory-invoices', []);
+  const [purchaseOrders, setPurchaseOrders] = useLocalStorage<PurchaseOrder[]>('inventory-purchaseOrders', []);
+  const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>('inventory-suppliers', [{ id: 'sup-1', name: 'Default Supplier', email: 'contact@default.com', phone: '123-456-7890' }]);
   
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [dataError, setDataError] = useState<string | null>(null);
-  const [needsDbSetup, setNeedsDbSetup] = useState<boolean>(false);
-  const [isSettingUpDb, setIsSettingUpDb] = useState<boolean>(false);
-
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('active');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -58,63 +54,6 @@ const App: React.FC = () => {
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
 
   useEffect(() => {
-    const sessionActive = sessionStorage.getItem('inventory-pro-session') === 'true';
-    setIsAuthenticated(sessionActive);
-  }, []);
-  
-  // Effect to fetch all data from the database
-  const fetchData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setDataError(null);
-      setNeedsDbSetup(false);
-
-      const endpoints = [
-        'products', 'customers', 'categories', 
-        'suppliers', 'invoices', 'purchase-orders'
-      ];
-      const responses = await Promise.all(endpoints.map(ep => fetch(`/api/${ep}`)));
-
-      for (const res of responses) {
-          if (res.status === 404) {
-              const errorData = await res.json();
-              if (errorData.code === 'DB_TABLE_NOT_FOUND') {
-                  setNeedsDbSetup(true);
-                  return;
-              }
-          }
-          if (!res.ok) {
-              const err = await res.json();
-              throw new Error(`Failed to fetch ${res.url}: ${err.error || 'Unknown error'}`);
-          }
-      }
-      
-      const [
-          productsData, customersData, categoriesData, 
-          suppliersData, invoicesData, purchaseOrdersData
-      ] = await Promise.all(responses.map(res => res.json()));
-      
-      setProducts(productsData);
-      setCustomers(customersData);
-      setCategories(categoriesData);
-      setSuppliers(suppliersData);
-      setInvoices(invoicesData);
-      setPurchaseOrders(purchaseOrdersData);
-
-    } catch (err: any) {
-      setDataError(err.message || 'An unexpected error occurred while fetching data.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchData();
-    }
-  }, [isAuthenticated, fetchData]);
-
-  useEffect(() => {
     if (documentToPrint) {
       const timer = setTimeout(() => {
         const id = documentToPrint.type === 'invoice' ? 'invoice-pdf' : 'po-pdf';
@@ -129,42 +68,6 @@ const App: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [documentToPrint]);
-
-  const handleInitializeDb = async () => {
-    try {
-        setIsSettingUpDb(true);
-        setDataError(null);
-        const response = await fetch('/api/setup', { method: 'POST' });
-        if (!response.ok) {
-            throw new Error('Failed to initialize the database.');
-        }
-        await fetchData();
-    } catch (err: any) {
-        setDataError(err.message || 'An unexpected error occurred during database setup.');
-    } finally {
-        setIsSettingUpDb(false);
-    }
-  };
-
-  const handleLogin = (password: string): boolean => {
-    if (password === 'admin123') {
-        sessionStorage.setItem('inventory-pro-session', 'true');
-        setIsAuthenticated(true);
-        return true;
-    }
-    return false;
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem('inventory-pro-session');
-    setIsAuthenticated(false);
-    setProducts([]);
-    setCustomers([]);
-    setCategories([]);
-    setInvoices([]);
-    setPurchaseOrders([]);
-    setSuppliers([]);
-  };
 
   const handleDownloadInvoice = (invoice: Invoice) => {
     setDocumentToPrint({ type: 'invoice', data: invoice });
@@ -185,18 +88,12 @@ const App: React.FC = () => {
         "Customer Name", "Invoice ID", "Purchase Order ID", "Notes"
     ];
 
-    const csvRows = [headers.join(',')]; // Header row
+    const csvRows = [headers.join(',')];
 
-    // Helper to safely format CSV fields (handles commas and quotes)
     const formatCsvField = (field: any): string => {
-        if (field === null || field === undefined) {
-            return '';
-        }
+        if (field === null || field === undefined) return '';
         const stringField = String(field);
-        // If the field contains a comma, double quote, or newline, wrap it in double quotes
-        if (/[",\n]/.test(stringField)) {
-            return `"${stringField.replace(/"/g, '""')}"`;
-        }
+        if (/[",\n]/.test(stringField)) return `"${stringField.replace(/"/g, '""')}"`;
         return stringField;
     };
 
@@ -227,7 +124,6 @@ const App: React.FC = () => {
     link.setAttribute('href', url);
     const date = new Date().toISOString().split('T')[0];
     link.setAttribute('download', `inventory-export-${date}.csv`);
-    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -238,41 +134,21 @@ const App: React.FC = () => {
   const soldProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Sold), [products]);
   const archivedProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Archived), [products]);
 
-  // CRUD Handlers
+  // --- CRUD Handlers (LocalStorage) ---
   const handleAddProducts = useCallback(async (productData: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number }) => {
-    let newProducts: Omit<Product, 'id'>[] = [];
+    let newProductsBatch: Omit<Product, 'id'>[] = [];
     if (details.trackingType === 'imei') {
-        newProducts = details.imeis.map(imei => ({
-            ...productData,
-            imei: imei,
-            trackingType: 'imei',
-            quantity: 1,
-            status: ProductStatus.Available,
+        newProductsBatch = details.imeis.map(imei => ({
+            ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available,
         }));
     } else {
-        newProducts.push({
-            ...productData,
-            trackingType: 'quantity',
-            quantity: details.quantity,
-            status: ProductStatus.Available,
-        });
+        newProductsBatch.push({ ...productData, trackingType: 'quantity', quantity: details.quantity, status: ProductStatus.Available });
     }
 
-    try {
-        const response = await fetch('/api/products', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newProducts),
-        });
-        if (!response.ok) throw new Error('Failed to save new products.');
-        await fetchData();
-        return await response.json();
-    } catch (error) {
-        console.error('Error adding products:', error);
-        alert('Error: Could not save products to the database.');
-        return [];
-    }
-  }, [fetchData]);
+    const newProductsWithIds = newProductsBatch.map(p => ({ ...p, id: crypto.randomUUID() }));
+    setProducts(prev => [...prev, ...newProductsWithIds]);
+    return newProductsWithIds;
+  }, [setProducts]);
 
   const handleOpenEditModal = (product: Product) => {
     setProductToEdit(product);
@@ -280,40 +156,14 @@ const App: React.FC = () => {
   };
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
-    try {
-        const response = await fetch('/api/products', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedProduct),
-        });
-        if (!response.ok) throw new Error('Failed to update product.');
-        
-        await fetchData(); // Refresh all data to ensure consistency
-        
-        setEditModalOpen(false);
-        setProductToEdit(null);
-    } catch (error) {
-        console.error('Error updating product:', error);
-        alert('Error: Could not update the product in the database.');
-    }
+    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    setEditModalOpen(false);
+    setProductToEdit(null);
   };
   
   const handleDeleteProduct = async (productId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this product? This action cannot be undone.')) {
-        try {
-            const response = await fetch('/api/products', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: productId }),
-            });
-            if (!response.ok) {
-                throw new Error('Failed to delete product from the database.');
-            }
-            await fetchData(); // Refresh data after deletion
-        } catch (error) {
-            console.error('Error deleting product:', error);
-            alert('Error: Could not delete the product.');
-        }
+        setProducts(prev => prev.filter(p => p.id !== productId));
     }
   };
 
@@ -332,130 +182,108 @@ const App: React.FC = () => {
     };
 
   const handleCreateInvoice = useCallback(async (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => {
-      try {
-        const response = await fetch('/api/invoices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customerId, items }),
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.details || 'An unknown error occurred on the server.');
-        }
-        const newInvoice = await response.json();
-        
-        await fetchData();
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) { alert('Customer not found'); return; }
 
-        setInvoiceModalOpen(false);
-        handleDownloadInvoice(newInvoice);
-      } catch (error: any) {
-          console.error('Error creating invoice:', error);
-          alert(`Error: Could not create the invoice.\n\n${error.message}`);
+      const newInvoiceId = crypto.randomUUID();
+      const invoiceNumber = `INV-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(4, '0')}`;
+      let totalAmount = 0;
+      const invoiceItems: InvoiceItem[] = [];
+      const updatedProducts = [...products];
+
+      for (const item of items) {
+          const productIndex = updatedProducts.findIndex(p => p.id === item.productId);
+          if (productIndex === -1) continue;
+          const product = updatedProducts[productIndex];
+
+          if (product.trackingType === 'imei') {
+              updatedProducts[productIndex] = { ...product, status: ProductStatus.Sold, customerName: customer.name, invoiceId: newInvoiceId };
+              invoiceItems.push({ ...item, productName: product.productName, imei: product.imei });
+              totalAmount += item.sellingPrice;
+          } else {
+              const newQuantity = product.quantity - item.quantity;
+              if (newQuantity < 0) { alert(`Insufficient stock for ${product.productName}`); return; }
+              const newStatus = newQuantity > 0 ? ProductStatus.Available : ProductStatus.Sold;
+              updatedProducts[productIndex] = { ...product, quantity: newQuantity, status: newStatus, invoiceId: newInvoiceId };
+              invoiceItems.push({ ...item, productName: product.productName });
+              totalAmount += item.sellingPrice * item.quantity;
+          }
       }
-  }, [fetchData]);
+      
+      const newInvoice: Invoice = {
+          id: newInvoiceId, invoiceNumber, customerId, customerName: customer.name,
+          issueDate: new Date().toISOString(), items: invoiceItems, totalAmount
+      };
+
+      setProducts(updatedProducts);
+      setInvoices(prev => [...prev, newInvoice]);
+      setInvoiceModalOpen(false);
+      handleDownloadInvoice(newInvoice);
+  }, [products, customers, invoices.length, setProducts, setInvoices]);
 
  const handleCreatePurchaseOrder = useCallback(async (
     poDetails: Omit<PurchaseOrder, 'id' | 'productIds' | 'totalCost' | 'supplierName' | 'issueDate'>,
     productsData: { productInfo: NewProductInfo, details: { trackingType: 'imei', imeis: string[] } | { trackingType: 'quantity', quantity: number } }[]
 ) => {
-    try {
-        const response = await fetch('/api/purchase-orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ poDetails, productsData }),
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.details || 'An unknown error occurred on the server.');
+    const supplier = suppliers.find(s => s.id === poDetails.supplierId);
+    if (!supplier) { alert('Supplier not found.'); return; }
+
+    const newPoId = crypto.randomUUID();
+    let totalCost = 0;
+    const allNewProducts: Product[] = [];
+
+    for (const batch of productsData) {
+        const commonData = { ...batch.productInfo, status: ProductStatus.Available, purchaseOrderId: newPoId };
+        if (batch.details.trackingType === 'imei') {
+            for (const imei of batch.details.imeis) {
+                allNewProducts.push({ ...commonData, id: crypto.randomUUID(), imei, quantity: 1, trackingType: 'imei' });
+                totalCost += commonData.purchasePrice;
+            }
+        } else {
+            allNewProducts.push({ ...commonData, id: crypto.randomUUID(), quantity: batch.details.quantity, trackingType: 'quantity' });
+            totalCost += commonData.purchasePrice * batch.details.quantity;
         }
-        const { po: newPO } = await response.json();
-
-        await fetchData(); // Refresh all data for consistency
-
-        setPurchaseOrderModalOpen(false);
-        handleDownloadPurchaseOrder(newPO);
-    } catch (error: any) {
-        console.error('Error creating purchase order:', error);
-        alert(`Error: Could not create the purchase order.\n\n${error.message}`);
     }
-}, [fetchData]);
+
+    const newPO: PurchaseOrder = {
+        ...poDetails, id: newPoId, issueDate: new Date().toISOString(),
+        supplierName: supplier.name, productIds: allNewProducts.map(p => p.id), totalCost
+    };
+
+    setProducts(prev => [...prev, ...allNewProducts]);
+    setPurchaseOrders(prev => [...prev, newPO]);
+    setPurchaseOrderModalOpen(false);
+    handleDownloadPurchaseOrder(newPO);
+}, [products, suppliers, setProducts, setPurchaseOrders]);
   
-  // Category Handlers
   const handleAddCategory = async (name: string) => {
-    if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-        alert("Category already exists.");
-        return undefined;
-    }
-    try {
-        const response = await fetch('/api/categories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-        });
-        if (!response.ok) throw new Error('Failed to save category.');
-        const newCategory = await response.json();
-        setCategories(prev => [...prev, newCategory]);
-        return newCategory;
-    } catch (error) {
-        console.error(error);
-        alert('Error: Could not save category.');
-        return undefined;
-    }
+    if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) { alert("Category already exists."); return; }
+    const newCategory = { id: crypto.randomUUID(), name };
+    setCategories(prev => [...prev, newCategory]);
+    return newCategory;
   };
 
   const handleDeleteCategory = async (id: string) => {
     const category = categories.find(c => c.id === id);
-    if (products.some(p => p.category === category?.name)) {
-        alert("Cannot delete category as it is used by some products.");
-        return;
-    }
-    try {
-        await fetch('/api/categories', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-        setCategories(prev => prev.filter(c => c.id !== id));
-    } catch (error) { console.error(error); alert('Error: Could not delete category.'); }
+    if (products.some(p => p.category === category?.name)) { alert("Cannot delete category as it is used by some products."); return; }
+    setCategories(prev => prev.filter(c => c.id !== id));
   };
   
-  // Customer Handlers
   const handleSaveCustomer = async (customerData: Omit<Customer, 'id'>) => {
-    const customerToSave = customerToEdit ? { ...customerData, id: customerToEdit.id } : customerData;
-    try {
-        const response = await fetch('/api/customers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(customerToSave),
-        });
-        if (!response.ok) throw new Error('Failed to save customer.');
-        const savedCustomer = await response.json();
-        if (customerToEdit) {
-            setCustomers(prev => prev.map(c => c.id === savedCustomer.id ? savedCustomer : c));
-        } else {
-            setCustomers(prev => [...prev, savedCustomer]);
-        }
-        setCustomerModalOpen(false);
-        setCustomerToEdit(null);
-    } catch (error) { console.error(error); alert('Error: Could not save customer.'); }
+    if (customerToEdit) {
+        setCustomers(prev => prev.map(c => c.id === customerToEdit.id ? { ...c, ...customerData } : c));
+    } else {
+        setCustomers(prev => [...prev, { ...customerData, id: crypto.randomUUID() }]);
+    }
+    setCustomerModalOpen(false);
+    setCustomerToEdit(null);
   };
 
-  const handleAddCustomer = async (name: string, phone: string): Promise<Customer | undefined> => {
-    if (customers.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-        alert("A customer with this name already exists.");
-        return undefined;
-    }
-    try {
-        const response = await fetch('/api/customers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, phone }),
-        });
-        if (!response.ok) throw new Error('Failed to save customer.');
-        const newCustomer = await response.json();
-        setCustomers(prev => [...prev, newCustomer]);
-        return newCustomer;
-    } catch (error) {
-        console.error(error);
-        alert('Error: Could not add customer.');
-        return undefined;
-    }
+  const handleAddCustomer = async (name: string, phone: string) => {
+    if (customers.some(c => c.name.toLowerCase() === name.toLowerCase())) { alert("A customer with this name already exists."); return; }
+    const newCustomer = { id: crypto.randomUUID(), name, phone };
+    setCustomers(prev => [...prev, newCustomer]);
+    return newCustomer;
   };
 
   const handleOpenAddCustomerModal = () => {
@@ -464,44 +292,18 @@ const App: React.FC = () => {
   };
   
   const handleDeleteCustomer = async (id: string) => {
-    if (invoices.some(inv => inv.customerId === id)) {
-        alert("Cannot delete customer with existing invoices.");
-        return;
-    }
-    try {
-        await fetch('/api/customers', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-        setCustomers(prev => prev.filter(c => c.id !== id));
-    } catch (error) { console.error(error); alert('Error: Could not delete customer.'); }
+    if (invoices.some(inv => inv.customerId === id)) { alert("Cannot delete customer with existing invoices."); return; }
+    setCustomers(prev => prev.filter(c => c.id !== id));
   };
   
-  // Supplier Handlers
  const handleSaveSupplier = async (supplierData: Omit<Supplier, 'id'>) => {
-    const supplierToSave = supplierToEdit ? { ...supplierData, id: supplierToEdit.id } : supplierData;
-    try {
-        const response = await fetch('/api/suppliers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(supplierToSave),
-        });
-        if (!response.ok) throw new Error('Failed to save supplier.');
-        const savedSupplier = await response.json();
-        if (supplierToEdit) {
-            setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
-        } else {
-             // Handle case where supplier might already exist from another session
-            const supplierExists = suppliers.some(s => s.id === savedSupplier.id);
-            if (supplierExists) {
-                setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
-            } else {
-                setSuppliers(prev => [...prev, savedSupplier]);
-            }
-        }
-        setSupplierModalOpen(false);
-        setSupplierToEdit(null);
-    } catch (error) {
-        console.error(error);
-        alert('Error: Could not save supplier.');
+    if (supplierToEdit) {
+        setSuppliers(prev => prev.map(s => s.id === supplierToEdit.id ? { ...s, ...supplierData } : s));
+    } else {
+        setSuppliers(prev => [...prev, { ...supplierData, id: crypto.randomUUID() }]);
     }
+    setSupplierModalOpen(false);
+    setSupplierToEdit(null);
   };
 
   const handleOpenAddSupplierModal = () => {
@@ -510,14 +312,8 @@ const App: React.FC = () => {
   };
 
   const handleDeleteSupplier = async (id: string) => {
-    if (purchaseOrders.some(po => po.supplierId === id)) {
-        alert("Cannot delete supplier with existing purchase orders.");
-        return;
-    }
-     try {
-        await fetch('/api/suppliers', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
-        setSuppliers(prev => prev.filter(s => s.id !== id));
-    } catch (error) { console.error(error); alert('Error: Could not delete supplier.'); }
+    if (purchaseOrders.some(po => po.supplierId === id)) { alert("Cannot delete supplier with existing purchase orders."); return; }
+    setSuppliers(prev => prev.filter(s => s.id !== id));
   };
 
   const filteredProducts = useMemo(() => {
@@ -558,30 +354,6 @@ const App: React.FC = () => {
   const managementTabs = TABS.filter(tab => tab.id !== 'active' && tab.id !== 'sold');
 
   const renderContent = () => {
-    if (isLoading) {
-      return <div className="text-center py-12 px-4"><p>Loading application...</p></div>;
-    }
-    if (needsDbSetup) {
-        return (
-            <div className="text-center py-12 px-4">
-                <h2 className="text-2xl font-bold text-slate-800">Welcome to Inventory Pro</h2>
-                <p className="mt-2 text-slate-600">Your database is not yet initialized.</p>
-                <button 
-                    onClick={handleInitializeDb}
-                    disabled={isSettingUpDb}
-                    className="mt-6 px-6 py-2 text-sm font-medium text-white bg-primary rounded-md shadow-sm hover:bg-primary-hover disabled:opacity-50"
-                >
-                    {isSettingUpDb ? 'Initializing...' : 'Initialize Database'}
-                </button>
-                {dataError && <p className="mt-4 text-red-600">{dataError}</p>}
-            </div>
-        );
-    }
-    if (dataError) {
-      return <div className="text-center py-12 px-4 text-red-600"><p>Failed to load inventory</p><p className="text-sm">{dataError}</p></div>;
-    }
-    
-    // The main content for authenticated users
     switch(activeTab) {
         case 'active':
         case 'sold':
@@ -601,14 +373,9 @@ const App: React.FC = () => {
         case 'suppliers':
             return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={handleOpenAddSupplierModal} onEdit={(s) => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={handleDeleteSupplier} />;
         default:
-             // Should not happen, but as a fallback
              return <Dashboard products={products} invoices={invoices} />;
     }
   };
-
-  if (!isAuthenticated) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
 
   if (documentToPrint) {
     const documentComponent = documentToPrint.type === 'invoice'
@@ -628,10 +395,6 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-4">
                         <button onClick={handleExportToCSV} className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200" title="Download all products as CSV">
                             <DownloadIcon className="w-4 h-4" /> Export CSV
-                        </button>
-                        <button onClick={handleLogout} className="flex items-center gap-2 text-slate-500 hover:text-primary">
-                            <LogoutIcon className="w-5 h-5" />
-                            <span className="text-sm font-medium">Logout</span>
                         </button>
                     </div>
                 </div>

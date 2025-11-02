@@ -1,7 +1,6 @@
 import React from 'react';
 import { Product, ProductStatus, Invoice } from '../types';
 import { BuildingStorefrontIcon, ScaleIcon, ChartBarIcon, DocumentDuplicateIcon } from './icons';
-import AIInsights from './AIInsights';
 
 interface DashboardProps {
   products: Product[];
@@ -72,7 +71,6 @@ const Dashboard: React.FC<DashboardProps> = ({ products, invoices }) => {
           iconBgColor="bg-amber-100" 
         />
       </div>
-      <AIInsights products={products} invoices={invoices} />
     </>
   );
 };

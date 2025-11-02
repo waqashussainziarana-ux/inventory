@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@google/genai": "^0.12.0",
-    "postgres": "^3.4.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "onscan.js": "^1.5.2",
@@ -21,7 +20,6 @@
     "@types/node": "^20.12.12",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
-    "@vercel/node": "^3.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
