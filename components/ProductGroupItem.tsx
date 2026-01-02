@@ -23,38 +23,42 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
     const lowerCaseQuery = searchQuery.toLowerCase();
     return group.items.some(item => 
       (item.imei && item.imei.toLowerCase().includes(lowerCaseQuery)) ||
-      (item.notes && item.notes.toLowerCase().includes(lowerCaseQuery))
+      (item.notes && item.notes.toLowerCase().includes(lowerCaseQuery)) ||
+      (item.productName.toLowerCase().includes(lowerCaseQuery))
     );
   }, [searchQuery, group.items]);
 
   const [isExpanded, setIsExpanded] = useState(isSearchMatch);
 
-  const availableItems = group.items.filter(item => item.status === ProductStatus.Available);
-  const soldItems = group.items.filter(item => item.status === ProductStatus.Sold);
+  // Keep it expanded if a new search is performed that matches children
+  React.useEffect(() => {
+    if (isSearchMatch) setIsExpanded(true);
+  }, [isSearchMatch]);
 
+  const availableItems = group.items.filter(item => item.status === ProductStatus.Available);
   const availableQty = availableItems.reduce((sum, item) => sum + item.quantity, 0);
   const totalQty = group.items.reduce((sum, item) => sum + item.quantity, 0);
   
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:border-slate-300">
+    <div className={`bg-white rounded-xl shadow-sm border ${isSearchMatch ? 'border-primary shadow-indigo-100' : 'border-slate-200'} overflow-hidden transition-all hover:border-slate-300`}>
       <div 
-        className="p-4 cursor-pointer hover:bg-slate-50 flex items-center justify-between"
+        className="p-4 sm:p-5 cursor-pointer hover:bg-slate-50 flex items-center justify-between"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h3 className="text-lg font-bold text-slate-800">{group.productName}</h3>
-            <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <h3 className="text-base sm:text-xl font-bold text-slate-800">{group.productName}</h3>
+            <span className="px-2 py-0.5 text-[9px] sm:text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md">
                 {group.category}
             </span>
           </div>
           <div className="flex items-center gap-4 mt-1">
-            <p className="text-sm font-medium text-slate-500">
-                Stock: <span className={availableQty > 0 ? 'text-green-600' : 'text-rose-600'}>{availableQty}</span> / {totalQty}
+            <p className="text-xs sm:text-sm font-medium text-slate-500">
+                Stock: <span className={availableQty > 0 ? 'text-green-600 font-bold' : 'text-rose-600 font-bold'}>{availableQty}</span> / {totalQty}
             </p>
-            <p className="text-sm font-semibold text-primary">
+            <p className="text-sm sm:text-lg font-bold text-primary">
                 {formatCurrency(group.sellingPrice)}
             </p>
           </div>
@@ -62,17 +66,17 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
         
         <div className="flex items-center gap-4">
             <div className={`text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                <ChevronDownIcon className="w-5 h-5" />
+                <ChevronDownIcon className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
         </div>
       </div>
 
       {isExpanded && (
         <div className="bg-slate-50/50 border-t border-slate-100">
-          <div className="bg-slate-100/50 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
+          <div className="bg-slate-100/50 px-4 py-2 sm:py-3 text-[9px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
             <div>Identifier / Type</div>
-            <div>Purchased</div>
-            <div>Status</div>
+            <div className="hidden md:block">Purchased</div>
+            <div className="hidden md:block">Status</div>
             <div className="col-span-3 text-right">Details & Actions</div>
           </div>
           {group.items.map(item => (

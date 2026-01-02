@@ -9,13 +9,13 @@ interface DashboardProps {
 }
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; iconBgColor: string }> = ({ title, value, icon, iconBgColor }) => (
-  <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
-    <div className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl ${iconBgColor}`}>
-      {icon}
+  <div className="bg-white p-3 sm:p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 sm:gap-5">
+    <div className={`flex-shrink-0 w-10 h-10 sm:w-14 sm:h-14 flex items-center justify-center rounded-xl sm:rounded-2xl ${iconBgColor}`}>
+      {React.cloneElement(icon as React.ReactElement, { className: 'w-5 h-5 sm:w-7 sm:h-7 ' + (icon as React.ReactElement).props.className })}
     </div>
     <div className="min-w-0">
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 truncate">{title}</p>
-      <p className="text-base sm:text-lg font-black text-slate-900 truncate">{value}</p>
+      <p className="text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-wider text-slate-400 truncate">{title}</p>
+      <p className="text-base sm:text-2xl lg:text-3xl font-black text-slate-900 truncate">{value}</p>
     </div>
   </div>
 );
@@ -44,29 +44,29 @@ const Dashboard: React.FC<DashboardProps> = ({ products = [], invoices = [] }) =
   const grossProfit = totalSalesValue - costOfGoodsSold;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
       <StatCard 
         title="Stock" 
         value={totalStock} 
-        icon={<BuildingStorefrontIcon className="w-5 h-5 text-sky-600" />}
+        icon={<BuildingStorefrontIcon className="text-sky-600" />}
         iconBgColor="bg-sky-50" 
       />
       <StatCard 
         title="Value" 
         value={formatCurrency(totalInventoryValue)} 
-        icon={<ScaleIcon className="w-5 h-5 text-indigo-600" />}
+        icon={<ScaleIcon className="text-indigo-600" />}
         iconBgColor="bg-indigo-50" 
       />
       <StatCard 
         title="Profit" 
         value={formatCurrency(grossProfit)} 
-        icon={<ChartBarIcon className="w-5 h-5 text-green-600" />}
+        icon={<ChartBarIcon className="text-green-600" />}
         iconBgColor="bg-green-50" 
       />
       <StatCard 
         title="Invoices" 
         value={invoices.length} 
-        icon={<DocumentDuplicateIcon className="w-5 h-5 text-amber-600" />}
+        icon={<DocumentDuplicateIcon className="text-amber-600" />}
         iconBgColor="bg-amber-50" 
       />
     </div>

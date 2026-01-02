@@ -38,50 +38,50 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ categories, pro
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <form onSubmit={handleAdd} className="flex items-center gap-4 mb-8 p-4 bg-slate-50 rounded-lg">
+    <div className="max-w-2xl mx-auto py-4 sm:py-6">
+      <form onSubmit={handleAdd} className="flex items-center gap-4 mb-8 p-4 sm:p-6 bg-slate-50 rounded-2xl border border-slate-200">
         <input
           type="text"
           value={newCategoryName}
           onChange={(e) => setNewCategoryName(e.target.value)}
           placeholder="Enter new category name"
-          className="flex-grow block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
+          className="flex-grow block w-full rounded-xl border-slate-300 shadow-sm focus:border-primary focus:ring-primary text-sm sm:text-base p-3"
         />
         <button
           type="submit"
           disabled={!newCategoryName.trim() || isSubmitting}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-6 py-3 text-sm sm:text-base font-bold text-white bg-primary border border-transparent rounded-xl shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50 transition-all"
         >
-          {isSubmitting ? 'Adding...' : <><PlusIcon className="w-5 h-5" /> Add Category</>}
+          {isSubmitting ? 'Adding...' : <><PlusIcon className="w-5 h-5" /> Add</>}
         </button>
       </form>
       
-      <div className="space-y-3">
+      <div className="space-y-4">
         {categories.length > 0 ? (
           categories.map(category => {
             const count = productCountByCategory[category.name] || 0;
             const canDelete = count === 0;
             return (
-              <div key={category.id} className="flex justify-between items-center p-3 bg-white border rounded-lg">
-                <span className="font-medium text-slate-800">{category.name}</span>
+              <div key={category.id} className="flex justify-between items-center p-4 sm:p-5 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                <span className="font-bold text-slate-800 text-sm sm:text-lg">{category.name}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                    {count} product(s)
+                  <span className="text-xs sm:text-sm font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                    {count} unit(s)
                   </span>
                   <button
                     onClick={() => onDeleteCategory(category.id)}
                     disabled={!canDelete}
-                    className="text-red-600 hover:text-red-800 disabled:text-slate-300 disabled:cursor-not-allowed"
+                    className="p-2 text-rose-500 hover:text-rose-700 disabled:text-slate-200 disabled:cursor-not-allowed transition-colors"
                     title={canDelete ? "Delete category" : "Cannot delete category with products"}
                   >
-                    <TrashIcon className="w-5 h-5" />
+                    <TrashIcon className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
               </div>
             );
           })
         ) : (
-          <p className="text-center text-slate-500">No categories found. Add one above.</p>
+          <p className="text-center text-slate-500 font-medium py-10">No categories found. Add one above.</p>
         )}
       </div>
     </div>

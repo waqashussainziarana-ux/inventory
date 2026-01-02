@@ -47,6 +47,7 @@ const App: React.FC = () => {
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
   const [isSupplierModalOpen, setSupplierModalOpen] = useState(false);
+  const [isCategoryModalOpen, setCategoryModalOpen] = useState(false);
   
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
@@ -119,6 +120,7 @@ const App: React.FC = () => {
          await api.products.create({ ...productData, trackingType: 'quantity', quantity: details.quantity, status: ProductStatus.Available });
       }
       syncAllData();
+      setAddProductModalOpen(false);
     } catch (err: any) { alert(err.message); }
   };
 
@@ -154,6 +156,30 @@ const App: React.FC = () => {
     } catch (err: any) { alert(err.message); }
   };
 
+  const handleAddCategory = async (name: string) => {
+    try {
+      await api.categories.create(name);
+      syncAllData();
+      setCategoryModalOpen(false);
+    } catch (err: any) { alert(err.message); }
+  };
+
+  const handleAddCustomer = async (data: any) => {
+    try {
+      await api.customers.create(data);
+      syncAllData();
+      setCustomerModalOpen(false);
+    } catch (err: any) { alert(err.message); }
+  };
+
+  const handleAddSupplier = async (data: any) => {
+    try {
+      await api.suppliers.create(data);
+      syncAllData();
+      setSupplierModalOpen(false);
+    } catch (err: any) { alert(err.message); }
+  };
+
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
   const availableProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Available), [products]);
 
@@ -162,15 +188,15 @@ const App: React.FC = () => {
         <div className="flex flex-col items-center justify-center py-10 bg-rose-50 rounded-3xl border-2 border-rose-100 p-6 text-center">
             <div className="bg-rose-100 p-2 rounded-xl mb-3"><CloseIcon className="w-6 h-6 text-rose-600" /></div>
             <p className="text-rose-600 font-black uppercase tracking-widest text-xs mb-1">Sync Failed</p>
-            <p className="text-slate-500 text-xs max-w-xs mb-4">{syncError}</p>
-            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-indigo-100 hover:bg-primary-hover transition-all">Retry</button>
+            <p className="text-slate-500 text-xs sm:text-sm max-w-xs mb-4">{syncError}</p>
+            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-[10px] sm:text-xs shadow-lg shadow-indigo-100 hover:bg-primary-hover transition-all">Retry</button>
         </div>
     );
 
     if (isLoading && products.length === 0) return (
         <div className="flex flex-col items-center justify-center py-20">
             <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p className="text-slate-400 text-xs font-medium animate-pulse">Connecting...</p>
+            <p className="text-slate-400 text-xs sm:text-sm font-medium animate-pulse">Connecting...</p>
         </div>
     );
     
@@ -191,7 +217,7 @@ const App: React.FC = () => {
         case 'suppliers':
             return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => api.suppliers.delete(id).then(syncAllData)} />;
         case 'categories':
-            return <CategoryManagement categories={categories} products={products} onAddCategory={name => api.categories.create(name).then(syncAllData)} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} />;
+            return <CategoryManagement categories={categories} products={products} onAddCategory={handleAddCategory} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} />;
         default:
              return <Dashboard products={products} invoices={invoices} />;
     }
@@ -204,8 +230,8 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
         <div className="sticky top-0 p-3 bg-slate-900 flex justify-between items-center z-50">
-          <span className="text-white font-bold text-xs">Preview</span>
-          <button onClick={() => setDocumentToPrint(null)} className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-5 h-5" /></button>
+          <span className="text-white font-bold text-xs sm:text-sm">Preview</span>
+          <button onClick={() => setDocumentToPrint(null)} className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
         </div>
         <div className="flex justify-center p-4 bg-slate-100 min-h-screen">
           <div className="shadow-xl max-w-full overflow-x-auto">
@@ -220,42 +246,48 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
         <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-slate-200">
             <div className="max-w-7xl mx-auto px-4">
-                <div className="flex h-14 items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-primary p-1.5 rounded-lg"><BuildingStorefrontIcon className="w-5 h-5 text-white" /></div>
-                        <span className="text-lg font-black tracking-tight">Inventory<span className="text-primary">Track</span></span>
+                <div className="flex h-14 sm:h-16 items-center justify-between">
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="bg-primary p-1.5 rounded-lg"><BuildingStorefrontIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
+                        <span className="text-lg sm:text-xl font-black tracking-tight">Inventory<span className="text-primary">Track</span></span>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500 hidden sm:block truncate max-w-[100px]">{currentUser.name || currentUser.email}</span>
-                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-all"><LogoutIcon className="w-5 h-5" /></button>
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        <span className="text-[10px] sm:text-xs font-bold text-slate-500 hidden sm:block truncate max-w-[150px]">{currentUser.name || currentUser.email}</span>
+                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-all"><LogoutIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                     </div>
                 </div>
             </div>
         </header>
         
-        <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        <main className="max-w-7xl mx-auto px-4 py-6 sm:py-8 space-y-6">
             <section className="flex flex-col gap-6">
-                <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+                <div className="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
                     <div className="relative">
-                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                        <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-9 py-2.5 text-sm font-medium transition-all" />
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-slate-400" />
+                        <input 
+                            type="search" 
+                            value={searchQuery} 
+                            onChange={(e) => setSearchQuery(e.target.value)} 
+                            placeholder="IMEI SEARCH: Type IMEI or Product Name..." 
+                            className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-9 sm:pl-11 py-2.5 sm:py-3.5 text-sm sm:text-base lg:text-lg font-medium transition-all" 
+                        />
                     </div>
-                    <div className="flex gap-2">
-                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
-                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
-                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
+                    <div className="flex gap-2 sm:gap-3">
+                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-2.5 sm:py-3.5 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
+                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-2.5 sm:py-3.5 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
+                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-2.5 sm:py-3.5 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
                     </div>
                 </div>
                 <Dashboard products={products} invoices={invoices} />
             </section>
 
             <section className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
-                <div className="border-b border-slate-100 bg-slate-50/50 p-2">
-                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1">
+                <div className="border-b border-slate-100 bg-slate-50/50 p-2 sm:p-4">
+                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1 sm:gap-2">
                         {[
                           { id: 'active', label: 'Active' },
                           { id: 'sold', label: 'Sold' },
-                          { id: 'products', label: 'All' },
+                          { id: 'products', label: 'All Stock' },
                           { id: 'archive', label: 'Archived' },
                           { id: 'invoices', label: 'Invoices' },
                           { id: 'purchaseOrders', label: 'Orders' },
@@ -266,34 +298,34 @@ const App: React.FC = () => {
                             <button 
                               key={tab.id} 
                               onClick={() => setActiveTab(tab.id as any)} 
-                              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                              className={`py-2 px-1 sm:px-4 sm:py-2.5 rounded-lg font-black text-[9px] sm:text-xs lg:text-sm uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
                                 {tab.label}
                             </button>
                         ))}
                     </nav>
                 </div>
-                <div className="p-4 sm:p-6 min-h-[400px]">{renderContent()}</div>
+                <div className="p-4 sm:p-8 min-h-[400px]">{renderContent()}</div>
             </section>
         </main>
 
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
-            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => api.categories.create(name).then(syncAllData)} />
+            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={async (name) => { const cat = await api.categories.create(name); syncAllData(); return cat; }} />
         </Modal>
         <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
             {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => setEditModalOpen(false)} categories={categories} />}
         </Modal>
         <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Sales Invoice">
-            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => api.customers.create({ name, phone }).then(syncAllData)} />
+            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={async (name, phone) => { const cust = await api.customers.create({ name, phone }); syncAllData(); return cust; }} />
         </Modal>
         <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New Purchase Order">
-            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => api.suppliers.create(s).then(syncAllData)} categories={categories} onAddCategory={name => api.categories.create(name).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
+            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={handleAddSupplier} categories={categories} onAddCategory={async (name) => { const cat = await api.categories.create(name); syncAllData(); return cat; }} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
         </Modal>
         <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer Details">
-            <CustomerForm customer={customerToEdit} onSave={c => api.customers.create(c).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />
+            <CustomerForm customer={customerToEdit} onSave={handleAddCustomer} onClose={() => setCustomerModalOpen(false)} />
         </Modal>
         <Modal isOpen={isSupplierModalOpen} onClose={() => setSupplierModalOpen(false)} title="Supplier Details">
-            <SupplierForm supplier={supplierToEdit} onSave={s => api.suppliers.create(s).then(syncAllData)} onClose={() => setSupplierModalOpen(false)} />
+            <SupplierForm supplier={supplierToEdit} onSave={handleAddSupplier} onClose={() => setSupplierModalOpen(false)} />
         </Modal>
     </div>
   );
