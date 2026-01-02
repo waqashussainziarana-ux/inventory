@@ -13,12 +13,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSettingUp, setIsSettingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [setupMessage, setSetupMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setSetupMessage(null);
 
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
     const body = isLogin ? { email, password } : { email, password, name };
@@ -31,10 +34,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       });
 
       const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
+      let data;
+      try {
+          data = text ? JSON.parse(text) : {};
+      } catch (parseErr) {
+          throw new Error("Server returned an invalid response. The database might not be initialized.");
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed');
+        throw new Error(data.error || data.details || 'Authentication failed. Please check your credentials.');
       }
 
       onAuthSuccess(data.user);
@@ -42,6 +50,27 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       setError(err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSetupDatabase = async () => {
+    if (!confirm("This will create the necessary database tables. Continue?")) return;
+    setIsSettingUp(true);
+    setError(null);
+    setSetupMessage(null);
+    
+    try {
+      const res = await fetch('/api/setup', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setSetupMessage(data.message || "Database tables initialized successfully!");
+      } else {
+        throw new Error(data.error || "Failed to initialize database.");
+      }
+    } catch (err: any) {
+      setError(err.message + " (Check your DATABASE_URL environment variable)");
+    } finally {
+      setIsSettingUp(false);
     }
   };
 
@@ -111,18 +140,37 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
             {error && (
               <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                <p className="text-red-600 text-xs font-bold text-center">{error}</p>
+                <p className="text-red-600 text-xs font-bold text-center leading-tight">{error}</p>
+                {error.includes("relation \"users\" does not exist") && (
+                   <p className="text-red-500 text-[10px] text-center mt-2 font-medium">Tip: Use the 'Initialize Database' button below.</p>
+                )}
+              </div>
+            )}
+
+            {setupMessage && (
+              <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
+                <p className="text-green-600 text-xs font-bold text-center">{setupMessage}</p>
               </div>
             )}
 
             <button 
               type="submit" 
-              disabled={isLoading}
+              disabled={isLoading || isSettingUp}
               className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-100 hover:bg-primary-hover hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50"
             >
               {isLoading ? 'Processing...' : (isLogin ? 'Sign In to Account' : 'Create My Account')}
             </button>
           </form>
+
+          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+             <button 
+              onClick={handleSetupDatabase}
+              disabled={isSettingUp}
+              className="text-[10px] font-black uppercase tracking-widest text-slate-300 hover:text-primary transition-colors disabled:opacity-50"
+             >
+               {isSettingUp ? 'Initializing System...' : 'First time? Initialize Database'}
+             </button>
+          </div>
         </div>
       </div>
     </div>

@@ -32,7 +32,11 @@ function getUserId(req: VercelRequest): string | null {
 
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`Database Error [${resourceName}]:`, error);
-    return res.status(500).json({ error: `Internal Server Error: ${resourceName}`, details: error.message });
+    return res.status(500).json({ 
+        error: `Internal Server Error: ${resourceName}`, 
+        details: error.message,
+        code: error.code
+    });
 }
 
 // --- AUTH HANDLERS ---
@@ -58,13 +62,13 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, db: postgres.
                 SELECT id, email, name FROM users 
                 WHERE email = ${email} AND password = ${password}
             `;
-            if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+            if (!user) return res.status(401).json({ error: 'Invalid credentials. Please check your email and password.' });
             return res.status(200).json({ user });
         }
         
         return res.status(404).json({ error: 'Auth endpoint not found' });
     } catch (e: any) {
-        if (e.code === '23505') return res.status(400).json({ error: 'Email already registered' });
+        if (e.code === '23505') return res.status(400).json({ error: 'This email is already registered.' });
         return handleError(res, e, 'auth');
     }
 }
@@ -167,7 +171,7 @@ async function handleInvoices(req: VercelRequest, res: VercelResponse, db: postg
                 await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "issueDate", "totalAmount") VALUES (${newInvoiceId}, ${userId}, ${'INV-' + Date.now()}, ${customerId}, ${new Date().toISOString()}, ${total})`;
                 for (const item of items) {
                     await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") VALUES (${newInvoiceId}, ${item.productId}, ${item.productName || 'Product'}, ${item.imei || null}, ${item.quantity}, ${item.sellingPrice})`;
-                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvoiceId}, "customerName" = ${customer?.name || 'Customer'} WHERE id = ${item.productId} AND "userId" = ${userId}`;
+                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvoiceId}, "customerName" = ${customer?.name || 'Walk-in Customer'} WHERE id = ${item.productId} AND "userId" = ${userId}`;
                 }
             });
             const [final] = await db`SELECT * FROM invoices WHERE id = ${newInvoiceId}`;
@@ -222,16 +226,31 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
 async function handleSetup(res: VercelResponse, db: postgres.Sql) {
     try {
         await db.begin(async (sql) => {
+            // USERS
             await sql`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
+            
+            // SUPPLIERS
             await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
+            
+            // CUSTOMERS
             await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
+            
+            // CATEGORIES
             await sql`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
-            await sql`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "issueDate" DATE NOT NULL, "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
+            
+            // INVOICES
             await sql`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "issueDate" DATE NOT NULL, "totalAmount" NUMERIC(10, 2) NOT NULL);`;
+            
+            // PURCHASE ORDERS
+            await sql`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "issueDate" DATE NOT NULL, "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
+            
+            // PRODUCTS
             await sql`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" VARCHAR(255), "purchaseOrderId" VARCHAR(255), "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
+            
+            // INVOICE ITEMS
             await sql`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
         });
-        return res.status(200).json({ message: 'Database initialized for multi-tenant use.' });
+        return res.status(200).json({ message: 'Database initialized successfully. You can now sign up.' });
     } catch (e) { return handleError(res, e, 'setup'); }
 }
 
@@ -243,11 +262,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const path = req.url?.split('/') || [];
     const resource = path[2];
 
+    // Public resources
     if (resource === 'auth') return await handleAuth(req, res, db);
     if (resource === 'setup') return await handleSetup(res, db);
     if (resource === 'db-status') return res.status(200).json({ status: 'ok' });
 
-    if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+    // Protected resources
+    if (!userId) return res.status(401).json({ error: 'Authentication required. Please log in.' });
 
     switch (resource) {
         case 'generate-insights': return await handleGenerateInsights(req, res, userId);
@@ -263,6 +284,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
             return res.status(405).json({ error: 'Method not allowed' });
         default:
-            return res.status(404).json({ error: 'Resource not found' });
+            return res.status(404).json({ error: 'Endpoint not found' });
     }
 }
