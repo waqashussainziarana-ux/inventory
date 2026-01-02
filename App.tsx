@@ -21,19 +21,16 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AIInsights from './components/AIInsights';
 import AuthScreen from './components/AuthScreen';
-import { downloadPdf } from './utils/pdfGenerator';
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, DownloadIcon, BuildingStorefrontIcon, LogoutIcon } from './components/icons';
+import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, BuildingStorefrontIcon, LogoutIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
 const App: React.FC = () => {
-  // --- Auth State ---
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('inventory-user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // --- Data State ---
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -46,7 +43,6 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('active');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Modal States
   const [isAddProductModalOpen, setAddProductModalOpen] = useState(false);
   const [isInvoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [isPurchaseOrderModalOpen, setPurchaseOrderModalOpen] = useState(false);
@@ -59,7 +55,6 @@ const App: React.FC = () => {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
 
-  // --- API Handlers ---
   const fetchWithFallback = async (endpoint: string, options?: RequestInit) => {
     if (!currentUser) return null;
     
@@ -71,7 +66,8 @@ const App: React.FC = () => {
     try {
       const response = await fetch(`/api/${endpoint}`, { ...options, headers });
       if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-      return await response.json();
+      const text = await response.text();
+      return text ? JSON.parse(text) : { success: true };
     } catch (error) {
       console.warn(`Database unreachable at /api/${endpoint}, using local fallback.`, error);
       const localData = localStorage.getItem(`fallback-${currentUser.id}-${endpoint}`);
@@ -127,22 +123,12 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setProducts([]);
     setInvoices([]);
-    // Reset other state as needed
+    setCustomers([]);
+    setSuppliers([]);
+    setCategories([]);
+    setPurchaseOrders([]);
   };
 
-  const handleInitDb = async () => {
-    if (!confirm("This will initialize tables for all users. Continue?")) return;
-    try {
-        const res = await fetch('/api/setup', { method: 'POST' });
-        const data = await res.json();
-        alert(data.message || "Database setup complete!");
-        syncAllData();
-    } catch (e) {
-        alert("Failed to initialize database. Check your environment configuration.");
-    }
-  };
-
-  // --- CRUD Proxies (Modified for User Scope) ---
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
     const productsToAdd = details.trackingType === 'imei' 
       ? details.imeis.map((imei: string) => ({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available }))
@@ -186,11 +172,21 @@ const App: React.FC = () => {
       body: JSON.stringify({ id: productId })
     });
 
-    if (result || dbStatus === 'offline') {
+    if (result) {
       const updated = products.filter(p => p.id !== productId);
       setProducts(updated);
       saveDataLocally('products', updated);
     }
+  };
+
+  const handleDeleteResource = async (resource: 'customers' | 'suppliers' | 'categories', id: string) => {
+    if (!confirm(`Permanently delete this ${resource.slice(0, -1)}?`)) return;
+    const result = await fetchWithFallback(resource, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (result) syncAllData();
   };
 
   const handleCreateInvoice = async (customerId: string, items: any[]) => {
@@ -223,7 +219,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Helpers & Renderers ---
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
   const availableProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Available), [products]);
   const handleDownloadInvoice = (invoice: Invoice) => setDocumentToPrint({ type: 'invoice', data: invoice });
@@ -254,18 +249,13 @@ const App: React.FC = () => {
         case 'purchaseOrders':
             return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={handleDownloadPurchaseOrder} />;
         case 'customers':
-            return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => console.log('Delete logic')} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} />;
+            return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => handleDeleteResource('customers', id)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} />;
         case 'suppliers':
-            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => console.log('Delete logic')} />;
+            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => handleDeleteResource('suppliers', id)} />;
         case 'categories':
             return (
                 <div className="space-y-4">
-                    <CategoryManagement categories={categories} products={products} onAddCategory={name => fetchWithFallback('categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name }) }).then(syncAllData)} onDeleteCategory={id => console.log('Delete category')} />
-                    {currentUser?.email === 'admin@gadgetwall.com' && (
-                        <div className="pt-8 border-t flex justify-center">
-                            <button onClick={handleInitDb} className="text-xs font-bold text-slate-400 hover:text-primary transition-colors uppercase tracking-widest">Global Admin: Initialize Cloud Database</button>
-                        </div>
-                    )}
+                    <CategoryManagement categories={categories} products={products} onAddCategory={name => fetchWithFallback('categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name }) }).then(syncAllData)} onDeleteCategory={id => handleDeleteResource('categories', id)} />
                 </div>
             );
         default:
@@ -273,9 +263,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (!currentUser) {
-    return <AuthScreen onAuthSuccess={handleLoginSuccess} />;
-  }
+  if (!currentUser) return <AuthScreen onAuthSuccess={handleLoginSuccess} />;
 
   if (documentToPrint) {
     const documentComponent = documentToPrint.type === 'invoice'
@@ -306,11 +294,7 @@ const App: React.FC = () => {
                             <p className="text-xs font-bold text-slate-900">{currentUser.name || currentUser.email}</p>
                             <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Active Account</p>
                         </div>
-                        <button 
-                            onClick={handleLogout}
-                            className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
-                            title="Log Out"
-                        >
+                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Log Out">
                             <LogoutIcon className="w-6 h-6" />
                         </button>
                     </div>
@@ -371,7 +355,6 @@ const App: React.FC = () => {
             </section>
         </main>
 
-        {/* Modals remain similarly structured but pass userId where needed via hooks/proxies */}
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
             <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})}).then(syncAllData)} />
         </Modal>

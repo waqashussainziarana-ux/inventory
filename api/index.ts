@@ -44,7 +44,6 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, db: postgres.
         if (endpoint === 'signup') {
             const { email, password, name } = req.body;
             const id = randomUUID();
-            // In production, you MUST hash passwords. For this implementation we use standard storage.
             const [user] = await db`
                 INSERT INTO users (id, email, password, name)
                 VALUES (${id}, ${email}, ${password}, ${name})
@@ -72,6 +71,40 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, db: postgres.
 
 // --- DATA HANDLERS (USER SCOPED) ---
 
+async function handleGenerateInsights(req: VercelRequest, res: VercelResponse, userId: string) {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    
+    const { products, invoices } = req.body;
+    
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `
+        You are a business consultant for an inventory and sales tracking app. 
+        Analyze the following data for user ID ${userId} and provide actionable business insights, 
+        performance summaries, and stock recommendations.
+        
+        Products Data (truncated): ${JSON.stringify(products).substring(0, 10000)}
+        Invoices Data (truncated): ${JSON.stringify(invoices).substring(0, 5000)}
+        
+        Format your response in professional Markdown with sections for:
+        1. Executive Summary
+        2. Sales Performance
+        3. Inventory Health (Stock levels, high/low demand)
+        4. Financial Health (Profit, Costs)
+        5. Recommendations
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+        });
+        
+        return res.status(200).json({ insights: response.text });
+    } catch (e: any) {
+        return handleError(res, e, 'ai-insights');
+    }
+}
+
 async function handleProducts(req: VercelRequest, res: VercelResponse, db: postgres.Sql, userId: string) {
     try {
         switch (req.method) {
@@ -80,7 +113,7 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, db: postg
                 return res.status(200).json(rows);
             }
             case 'POST': {
-                const newProducts: any[] = req.body;
+                const newProducts: any[] = Array.isArray(req.body) ? req.body : [req.body];
                 const productsWithIds = newProducts.map(p => ({ ...p, id: randomUUID(), userId }));
                 const results = await db.begin(async (sql) => {
                     const queries = productsWithIds.map(p => sql`
@@ -102,12 +135,14 @@ async function handleProducts(req: VercelRequest, res: VercelResponse, db: postg
                     WHERE id = ${p.id} AND "userId" = ${userId}
                     RETURNING *;
                 `;
-                return res.status(200).json(row);
+                return res.status(200).json(row || { error: 'Not found' });
             }
             case 'DELETE': {
                 await db`DELETE FROM products WHERE id = ${req.body.id} AND "userId" = ${userId}`;
                 return res.status(200).json({ success: true });
             }
+            default:
+                return res.status(405).json({ error: 'Method not allowed' });
         }
     } catch (e) { return handleError(res, e, 'products'); }
 }
@@ -132,31 +167,54 @@ async function handleInvoices(req: VercelRequest, res: VercelResponse, db: postg
                 await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "issueDate", "totalAmount") VALUES (${newInvoiceId}, ${userId}, ${'INV-' + Date.now()}, ${customerId}, ${new Date().toISOString()}, ${total})`;
                 for (const item of items) {
                     await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") VALUES (${newInvoiceId}, ${item.productId}, ${item.productName || 'Product'}, ${item.imei || null}, ${item.quantity}, ${item.sellingPrice})`;
-                    // Update product status
-                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvoiceId}, "customerName" = ${customer.name} WHERE id = ${item.productId} AND "userId" = ${userId}`;
+                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvoiceId}, "customerName" = ${customer?.name || 'Customer'} WHERE id = ${item.productId} AND "userId" = ${userId}`;
                 }
             });
             const [final] = await db`SELECT * FROM invoices WHERE id = ${newInvoiceId}`;
             return res.status(201).json(final);
         }
+        return res.status(405).json({ error: 'Method not allowed' });
     } catch (e) { return handleError(res, e, 'invoices'); }
 }
 
 async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db: postgres.Sql, userId: string, tableName: string) {
     try {
-        if (req.method === 'GET') {
-            const rows = await db`SELECT * FROM ${db(tableName)} WHERE "userId" = ${userId} ORDER BY name ASC`;
-            return res.status(200).json(rows);
-        }
-        if (req.method === 'POST') {
-            const { name, ...rest } = req.body;
-            const [row] = await db`
-                INSERT INTO ${db(tableName)} (id, "userId", name, ${db(Object.keys(rest))})
-                VALUES (${randomUUID()}, ${userId}, ${name}, ${db(Object.values(rest))})
-                ON CONFLICT (name, "userId") DO UPDATE SET name = EXCLUDED.name
-                RETURNING *;
-            `;
-            return res.status(200).json(row);
+        const table = db(tableName);
+        switch (req.method) {
+            case 'GET': {
+                const rows = await db`SELECT * FROM ${table} WHERE "userId" = ${userId} ORDER BY name ASC`;
+                return res.status(200).json(rows);
+            }
+            case 'POST': {
+                const { name, ...rest } = req.body;
+                const columns = Object.keys(rest);
+                const values = Object.values(rest);
+                
+                let row;
+                if (columns.length > 0) {
+                    [row] = await db`
+                        INSERT INTO ${table} (id, "userId", name, ${db(columns)})
+                        VALUES (${randomUUID()}, ${userId}, ${name}, ${values})
+                        ON CONFLICT (name, "userId") DO UPDATE SET name = EXCLUDED.name
+                        RETURNING *;
+                    `;
+                } else {
+                    [row] = await db`
+                        INSERT INTO ${table} (id, "userId", name)
+                        VALUES (${randomUUID()}, ${userId}, ${name})
+                        ON CONFLICT (name, "userId") DO UPDATE SET name = EXCLUDED.name
+                        RETURNING *;
+                    `;
+                }
+                return res.status(200).json(row);
+            }
+            case 'DELETE': {
+                const { id } = req.body;
+                await db`DELETE FROM ${table} WHERE id = ${id} AND "userId" = ${userId}`;
+                return res.status(200).json({ success: true });
+            }
+            default:
+                return res.status(405).json({ error: 'Method not allowed' });
         }
     } catch (e) { return handleError(res, e, tableName); }
 }
@@ -164,10 +222,7 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
 async function handleSetup(res: VercelResponse, db: postgres.Sql) {
     try {
         await db.begin(async (sql) => {
-            // USERS TABLE
             await sql`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
-            
-            // MULTI-TENANT TABLES
             await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
             await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
             await sql`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
@@ -192,19 +247,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (resource === 'setup') return await handleSetup(res, db);
     if (resource === 'db-status') return res.status(200).json({ status: 'ok' });
 
-    // Middleware: All data resources require userId
-    if (!userId) return res.status(401).json({ error: 'Authentication required. Missing x-user-id header.' });
+    if (!userId) return res.status(401).json({ error: 'Authentication required.' });
 
     switch (resource) {
+        case 'generate-insights': return await handleGenerateInsights(req, res, userId);
         case 'products': return await handleProducts(req, res, db, userId);
         case 'customers': return await handleSimpleResource(req, res, db, userId, 'customers');
         case 'categories': return await handleSimpleResource(req, res, db, userId, 'categories');
         case 'suppliers': return await handleSimpleResource(req, res, db, userId, 'suppliers');
         case 'invoices': return await handleInvoices(req, res, db, userId);
         case 'purchase-orders': 
-            // Minimal implementation for brevity
-            if (req.method === 'GET') return res.status(200).json(await db`SELECT * FROM purchase_orders WHERE "userId" = ${userId}`);
-            return res.status(200).json({ message: 'Endpoint active' });
+            if (req.method === 'GET') {
+                const rows = await db`SELECT * FROM purchase_orders WHERE "userId" = ${userId} ORDER BY "issueDate" DESC`;
+                return res.status(200).json(rows);
+            }
+            return res.status(405).json({ error: 'Method not allowed' });
         default:
             return res.status(404).json({ error: 'Resource not found' });
     }

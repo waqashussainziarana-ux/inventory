@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Product, Invoice } from '../types';
 import { SparklesIcon } from './icons';
@@ -7,7 +8,6 @@ interface AIInsightsProps {
     invoices: Invoice[];
 }
 
-// A simple markdown parser to format the AI's response
 const SimpleMarkdown: React.FC<{ text: string }> = ({ text }) => {
     const lines = text.split('\n').map((line, index) => {
         line = line.trim();
@@ -26,7 +26,6 @@ const SimpleMarkdown: React.FC<{ text: string }> = ({ text }) => {
         if (line === '') {
             return null;
         }
-        // Basic bold handling
         const parts = line.split('**');
         const renderedParts = parts.map((part, i) =>
             i % 2 === 1 ? <strong key={i} className="font-semibold text-slate-700">{part}</strong> : <span key={i}>{part}</span>
@@ -48,21 +47,32 @@ const AIInsights: React.FC<AIInsightsProps> = ({ products, invoices }) => {
         setError(null);
         setInsights(null);
 
+        const savedUser = localStorage.getItem('inventory-user');
+        const currentUser = savedUser ? JSON.parse(savedUser) : null;
+
+        if (!currentUser) {
+            setError("User session expired. Please log in again.");
+            setIsLoading(false);
+            return;
+        }
+
         try {
             const response = await fetch('/api/generate-insights', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'x-user-id': currentUser.id
                 },
                 body: JSON.stringify({ products, invoices }),
             });
 
+            const text = await response.text();
+            const data = text ? JSON.parse(text) : {};
+
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to fetch insights.');
+                throw new Error(data.error || 'Failed to fetch insights.');
             }
 
-            const data = await response.json();
             setInsights(data.insights);
         } catch (err: any) {
             setError(err.message);
