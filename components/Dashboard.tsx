@@ -9,20 +9,20 @@ interface DashboardProps {
 }
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; iconBgColor: string }> = ({ title, value, icon, iconBgColor }) => (
-  <div className="bg-white p-4 rounded-xl shadow-sm flex items-center gap-4">
-    <div className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full ${iconBgColor}`}>
+  <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
+    <div className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl ${iconBgColor}`}>
       {icon}
     </div>
-    <div>
-      <p className="text-sm font-medium text-slate-500">{title}</p>
-      <p className="text-2xl font-bold text-slate-800">{value}</p>
+    <div className="min-w-0">
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 truncate">{title}</p>
+      <p className="text-base sm:text-lg font-black text-slate-900 truncate">{value}</p>
     </div>
   </div>
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ products = [], invoices = [] }) => {
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0);
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(amount || 0);
   };
 
   const activeProducts = Array.isArray(products) ? products.filter(p => p.status === ProductStatus.Available) : [];
@@ -44,30 +44,30 @@ const Dashboard: React.FC<DashboardProps> = ({ products = [], invoices = [] }) =
   const grossProfit = totalSalesValue - costOfGoodsSold;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <StatCard 
-        title="Active Stock" 
+        title="Stock" 
         value={totalStock} 
-        icon={<BuildingStorefrontIcon className="w-6 h-6 text-sky-600" />}
-        iconBgColor="bg-sky-100" 
+        icon={<BuildingStorefrontIcon className="w-5 h-5 text-sky-600" />}
+        iconBgColor="bg-sky-50" 
       />
       <StatCard 
-        title="Inventory Value" 
+        title="Value" 
         value={formatCurrency(totalInventoryValue)} 
-        icon={<ScaleIcon className="w-6 h-6 text-indigo-600" />}
-        iconBgColor="bg-indigo-100" 
+        icon={<ScaleIcon className="w-5 h-5 text-indigo-600" />}
+        iconBgColor="bg-indigo-50" 
       />
       <StatCard 
-        title="Gross Profit" 
+        title="Profit" 
         value={formatCurrency(grossProfit)} 
-        icon={<ChartBarIcon className="w-6 h-6 text-green-600" />}
-        iconBgColor="bg-green-100" 
+        icon={<ChartBarIcon className="w-5 h-5 text-green-600" />}
+        iconBgColor="bg-green-50" 
       />
       <StatCard 
-        title="Total Invoices" 
+        title="Invoices" 
         value={invoices.length} 
-        icon={<DocumentDuplicateIcon className="w-6 h-6 text-amber-600" />}
-        iconBgColor="bg-amber-100" 
+        icon={<DocumentDuplicateIcon className="w-5 h-5 text-amber-600" />}
+        iconBgColor="bg-amber-50" 
       />
     </div>
   );

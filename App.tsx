@@ -19,7 +19,6 @@ import CustomerList from './components/CustomerList';
 import CustomerForm from './components/CustomerForm';
 import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
-import AIInsights from './components/AIInsights';
 import AuthScreen from './AuthScreen';
 import { api } from './lib/api';
 import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon } from './components/icons';
@@ -160,18 +159,18 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (syncError) return (
-        <div className="flex flex-col items-center justify-center py-20 bg-rose-50 rounded-3xl border-2 border-rose-100 p-8 text-center">
-            <div className="bg-rose-100 p-3 rounded-2xl mb-4"><CloseIcon className="w-8 h-8 text-rose-600" /></div>
-            <p className="text-rose-600 font-black uppercase tracking-widest text-sm mb-2">Sync Connection Failed</p>
-            <p className="text-slate-500 text-sm max-w-md mb-6">{syncError}</p>
-            <button onClick={syncAllData} className="px-8 py-3 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-100 hover:bg-primary-hover transition-all">Try Again</button>
+        <div className="flex flex-col items-center justify-center py-10 bg-rose-50 rounded-3xl border-2 border-rose-100 p-6 text-center">
+            <div className="bg-rose-100 p-2 rounded-xl mb-3"><CloseIcon className="w-6 h-6 text-rose-600" /></div>
+            <p className="text-rose-600 font-black uppercase tracking-widest text-xs mb-1">Sync Failed</p>
+            <p className="text-slate-500 text-xs max-w-xs mb-4">{syncError}</p>
+            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-indigo-100 hover:bg-primary-hover transition-all">Retry</button>
         </div>
     );
 
     if (isLoading && products.length === 0) return (
-        <div className="flex flex-col items-center justify-center py-40">
-            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-400 font-medium animate-pulse">Establishing Connection...</p>
+        <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="text-slate-400 text-xs font-medium animate-pulse">Connecting...</p>
         </div>
     );
     
@@ -198,18 +197,20 @@ const App: React.FC = () => {
     }
   };
 
-  if (isAuthChecking) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+  if (isAuthChecking) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   if (!currentUser) return <AuthScreen onAuthSuccess={setCurrentUser} />;
 
   if (documentToPrint) {
     return (
       <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
-        <div className="sticky top-0 p-4 bg-slate-900 flex justify-between items-center z-50">
-          <span className="text-white font-bold text-sm">Document Preview</span>
-          <button onClick={() => setDocumentToPrint(null)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
+        <div className="sticky top-0 p-3 bg-slate-900 flex justify-between items-center z-50">
+          <span className="text-white font-bold text-xs">Preview</span>
+          <button onClick={() => setDocumentToPrint(null)} className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-5 h-5" /></button>
         </div>
-        <div className="flex justify-center p-8 bg-slate-100 min-h-screen">
-          <div className="shadow-2xl">{documentToPrint.type === 'invoice' ? <InvoicePDF invoice={documentToPrint.data as Invoice} /> : <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />}</div>
+        <div className="flex justify-center p-4 bg-slate-100 min-h-screen">
+          <div className="shadow-xl max-w-full overflow-x-auto">
+            {documentToPrint.type === 'invoice' ? <InvoicePDF invoice={documentToPrint.data as Invoice} /> : <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />}
+          </div>
         </div>
       </div>
     );
@@ -217,53 +218,62 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
-        <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-slate-200">
-            <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex h-16 items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-primary p-2 rounded-xl"><BuildingStorefrontIcon className="w-6 h-6 text-white" /></div>
-                        <span className="text-xl font-extrabold tracking-tight">Inventory<span className="text-primary">Track</span></span>
+        <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-slate-200">
+            <div className="max-w-7xl mx-auto px-4">
+                <div className="flex h-14 items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="bg-primary p-1.5 rounded-lg"><BuildingStorefrontIcon className="w-5 h-5 text-white" /></div>
+                        <span className="text-lg font-black tracking-tight">Inventory<span className="text-primary">Track</span></span>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <span className="text-xs font-bold text-slate-600 hidden sm:block">{currentUser.name || currentUser.email}</span>
-                        <button onClick={handleLogout} className="p-2.5 text-slate-400 hover:text-rose-500 transition-all"><LogoutIcon className="w-5 h-5" /></button>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-500 hidden sm:block truncate max-w-[100px]">{currentUser.name || currentUser.email}</span>
+                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-all"><LogoutIcon className="w-5 h-5" /></button>
                     </div>
                 </div>
             </div>
         </header>
         
-        <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-            <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-8 space-y-8">
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="relative">
-                                <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Quick search..." className="block w-full bg-slate-50 rounded-2xl border-transparent focus:border-primary pl-11 py-3.5 text-sm font-medium transition-all" />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl hover:bg-rose-100 transition-all">PO</button>
-                                <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-2xl hover:bg-emerald-100 transition-all">Sell</button>
-                                <button onClick={() => setAddProductModalOpen(true)} className="flex-1 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-white bg-primary rounded-2xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
-                            </div>
-                        </div>
+        <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+            <section className="flex flex-col gap-6">
+                <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+                    <div className="relative">
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-9 py-2.5 text-sm font-medium transition-all" />
                     </div>
-                    <Dashboard products={products} invoices={invoices} />
+                    <div className="flex gap-2">
+                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
+                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
+                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
+                    </div>
                 </div>
-                <div className="lg:col-span-4"><AIInsights products={products} invoices={invoices} /></div>
+                <Dashboard products={products} invoices={invoices} />
             </section>
 
-            <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50/30 px-6 overflow-x-auto no-scrollbar">
-                    <nav className="-mb-px flex gap-x-8">
-                        {['active', 'sold', 'products', 'archive', 'invoices', 'purchaseOrders', 'customers', 'suppliers', 'categories'].map(tab => (
-                            <button key={tab} onClick={() => setActiveTab(tab as any)} className={`whitespace-nowrap py-5 px-1 border-b-2 font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-                                {tab}
+            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
+                <div className="border-b border-slate-100 bg-slate-50/50 p-2">
+                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1">
+                        {[
+                          { id: 'active', label: 'Active' },
+                          { id: 'sold', label: 'Sold' },
+                          { id: 'products', label: 'All' },
+                          { id: 'archive', label: 'Archived' },
+                          { id: 'invoices', label: 'Invoices' },
+                          { id: 'purchaseOrders', label: 'Orders' },
+                          { id: 'customers', label: 'Clients' },
+                          { id: 'suppliers', label: 'Suppliers' },
+                          { id: 'categories', label: 'Cats' }
+                        ].map(tab => (
+                            <button 
+                              key={tab.id} 
+                              onClick={() => setActiveTab(tab.id as any)} 
+                              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                {tab.label}
                             </button>
                         ))}
                     </nav>
                 </div>
-                <div className="p-8 min-h-[500px]">{renderContent()}</div>
+                <div className="p-4 sm:p-6 min-h-[400px]">{renderContent()}</div>
             </section>
         </main>
 
