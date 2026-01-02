@@ -18,9 +18,21 @@ const getProductGroupKey = (p: Product) =>
 const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onEditProduct, onDeleteProduct, listType, searchQuery }) => {
   const activeProducts = products.filter(p => p.status !== ProductStatus.Archived);
 
+  const filteredProducts = React.useMemo(() => {
+    if (!searchQuery) return activeProducts;
+    const lowerQuery = searchQuery.toLowerCase();
+    return activeProducts.filter(p => 
+      p.productName.toLowerCase().includes(lowerQuery) || 
+      (p.imei && p.imei.toLowerCase().includes(lowerQuery)) ||
+      (p.category && p.category.toLowerCase().includes(lowerQuery)) ||
+      (p.notes && p.notes.toLowerCase().includes(lowerQuery)) ||
+      (p.customerName && p.customerName.toLowerCase().includes(lowerQuery))
+    );
+  }, [activeProducts, searchQuery]);
+
   const groupedProducts = React.useMemo(() => {
       const groups: Record<string, ProductGroup> = {};
-      activeProducts.forEach(product => {
+      filteredProducts.forEach(product => {
           const key = getProductGroupKey(product);
           if (!groups[key]) {
               groups[key] = {
@@ -35,7 +47,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onE
           groups[key].items.push(product);
       });
       return Object.values(groups).sort((a, b) => a.productName.localeCompare(b.productName));
-  }, [activeProducts]);
+  }, [filteredProducts]);
 
 
   if (activeProducts.length === 0 && listType !== 'search') {
@@ -49,10 +61,10 @@ const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onE
     );
   }
 
-  if (groupedProducts.length === 0) {
+  if (groupedProducts.length === 0 && searchQuery) {
      return (
       <div className="text-center py-12">
-        <h3 className="text-lg font-medium text-slate-700">No products found for your search.</h3>
+        <h3 className="text-lg font-medium text-slate-700">No products found for "{searchQuery}".</h3>
         <p className="text-sm text-slate-500 mt-1">Try searching for another IMEI or product name.</p>
       </div>
     );
