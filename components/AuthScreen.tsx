@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { BuildingStorefrontIcon } from './icons';
 import { User } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface AuthScreenProps {
   onAuthSuccess: (user: User) => void;
@@ -13,64 +14,47 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSettingUp, setIsSettingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [setupMessage, setSetupMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    setSetupMessage(null);
-
-    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-    const body = isLogin ? { email, password } : { email, password, name };
 
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const text = await response.text();
-      let data;
-      try {
-          data = text ? JSON.parse(text) : {};
-      } catch (parseErr) {
-          throw new Error("Server returned an invalid response. The database might not be initialized.");
+      if (isLogin) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        if (data.user) {
+          onAuthSuccess({
+            id: data.user.id,
+            email: data.user.email!,
+            name: data.user.user_metadata?.full_name,
+          });
+        }
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: name,
+            },
+          },
+        });
+        if (error) throw error;
+        if (data.user) {
+            alert("Account created! Please check your email for verification if enabled, or sign in now.");
+            setIsLogin(true);
+        }
       }
-
-      if (!response.ok) {
-        throw new Error(data.error || data.details || 'Authentication failed. Please check your credentials.');
-      }
-
-      onAuthSuccess(data.user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSetupDatabase = async () => {
-    if (!confirm("This will create the necessary database tables. Continue?")) return;
-    setIsSettingUp(true);
-    setError(null);
-    setSetupMessage(null);
-    
-    try {
-      const res = await fetch('/api/setup', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        setSetupMessage(data.message || "Database tables initialized successfully!");
-      } else {
-        throw new Error(data.error || "Failed to initialize database.");
-      }
-    } catch (err: any) {
-      setError(err.message + " (Check your DATABASE_URL environment variable)");
-    } finally {
-      setIsSettingUp(false);
     }
   };
 
@@ -82,7 +66,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             <BuildingStorefrontIcon className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight">Inventory<span className="text-primary">Track</span></h1>
-          <p className="text-slate-500 font-medium mt-2">Manage your stock, sales, and insights.</p>
+          <p className="text-slate-500 font-medium mt-2">Powered by Supabase</p>
         </div>
 
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/60 p-8 sm:p-10 border border-slate-200">
@@ -141,36 +125,17 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             {error && (
               <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
                 <p className="text-red-600 text-xs font-bold text-center leading-tight">{error}</p>
-                {error.includes("relation \"users\" does not exist") && (
-                   <p className="text-red-500 text-[10px] text-center mt-2 font-medium">Tip: Use the 'Initialize Database' button below.</p>
-                )}
-              </div>
-            )}
-
-            {setupMessage && (
-              <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
-                <p className="text-green-600 text-xs font-bold text-center">{setupMessage}</p>
               </div>
             )}
 
             <button 
               type="submit" 
-              disabled={isLoading || isSettingUp}
+              disabled={isLoading}
               className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-100 hover:bg-primary-hover hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50"
             >
-              {isLoading ? 'Processing...' : (isLogin ? 'Sign In to Account' : 'Create My Account')}
+              {isLoading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
             </button>
           </form>
-
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-             <button 
-              onClick={handleSetupDatabase}
-              disabled={isSettingUp}
-              className="text-[10px] font-black uppercase tracking-widest text-slate-300 hover:text-primary transition-colors disabled:opacity-50"
-             >
-               {isSettingUp ? 'Initializing System...' : 'First time? Initialize Database'}
-             </button>
-          </div>
         </div>
       </div>
     </div>

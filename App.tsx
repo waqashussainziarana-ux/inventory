@@ -21,15 +21,14 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AIInsights from './components/AIInsights';
 import AuthScreen from './components/AuthScreen';
+import { supabase } from './lib/supabase';
 import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, BuildingStorefrontIcon, LogoutIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
 const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('inventory-user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -38,8 +37,7 @@ const App: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
-  const [isLoading, setIsLoading] = useState(true);
-  const [dbStatus, setDbStatus] = useState<'connected' | 'offline' | 'checking'>('checking');
+  const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('active');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -55,71 +53,66 @@ const App: React.FC = () => {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
 
-  const fetchWithFallback = async (endpoint: string, options?: RequestInit) => {
-    if (!currentUser) return null;
-    
-    const headers = {
-      ...(options?.headers || {}),
-      'x-user-id': currentUser.id
-    };
+  // --- Auth & Sync ---
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setCurrentUser({
+          id: session.user.id,
+          email: session.user.email!,
+          name: session.user.user_metadata?.full_name,
+        });
+      }
+      setIsAuthChecking(false);
+    });
 
-    try {
-      const response = await fetch(`/api/${endpoint}`, { ...options, headers });
-      if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-      const text = await response.text();
-      return text ? JSON.parse(text) : { success: true };
-    } catch (error) {
-      console.warn(`Database unreachable at /api/${endpoint}, using local fallback.`, error);
-      const localData = localStorage.getItem(`fallback-${currentUser.id}-${endpoint}`);
-      return localData ? JSON.parse(localData) : null;
-    }
-  };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setCurrentUser({
+          id: session.user.id,
+          email: session.user.email!,
+          name: session.user.user_metadata?.full_name,
+        });
+      } else {
+        setCurrentUser(null);
+      }
+    });
 
-  const saveDataLocally = (endpoint: string, data: any) => {
-    if (!currentUser) return;
-    localStorage.setItem(`fallback-${currentUser.id}-${endpoint}`, JSON.stringify(data));
-  };
+    return () => subscription.unsubscribe();
+  }, []);
 
   const syncAllData = useCallback(async () => {
     if (!currentUser) return;
     setIsLoading(true);
     try {
-      const status = await fetch('/api/db-status').then(r => r.json()).catch(() => ({ status: 'error' }));
-      setDbStatus(status.status === 'ok' ? 'connected' : 'offline');
-
       const [p, c, cat, inv, po, sup] = await Promise.all([
-        fetchWithFallback('products'),
-        fetchWithFallback('customers'),
-        fetchWithFallback('categories'),
-        fetchWithFallback('invoices'),
-        fetchWithFallback('purchase-orders'),
-        fetchWithFallback('suppliers')
+        supabase.from('products').select('*').order('purchaseDate', { ascending: false }),
+        supabase.from('customers').select('*').order('name'),
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('invoices').select('*, invoice_items(*)').order('issueDate', { ascending: false }),
+        supabase.from('purchase_orders').select('*').order('issueDate', { ascending: false }),
+        supabase.from('suppliers').select('*').order('name')
       ]);
 
-      if (p) { setProducts(p); saveDataLocally('products', p); }
-      if (c) { setCustomers(c); saveDataLocally('customers', c); }
-      if (cat) { setCategories(cat); saveDataLocally('categories', cat); }
-      if (inv) { setInvoices(inv); saveDataLocally('invoices', inv); }
-      if (po) { setPurchaseOrders(po); saveDataLocally('purchase-orders', po); }
-      if (sup) { setSuppliers(sup); saveDataLocally('suppliers', sup); }
+      if (p.data) setProducts(p.data);
+      if (c.data) setCustomers(c.data);
+      if (cat.data) setCategories(cat.data);
+      if (inv.data) setInvoices(inv.data.map(i => ({ ...i, items: i.invoice_items })));
+      if (po.data) setPurchaseOrders(po.data);
+      if (sup.data) setSuppliers(sup.data);
+    } catch (e) {
+      console.error("Sync error", e);
     } finally {
       setIsLoading(false);
     }
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser) {
-      syncAllData();
-    }
+    if (currentUser) syncAllData();
   }, [currentUser, syncAllData]);
 
-  const handleLoginSuccess = (user: User) => {
-    localStorage.setItem('inventory-user', JSON.stringify(user));
-    setCurrentUser(user);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('inventory-user');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
     setProducts([]);
     setInvoices([]);
@@ -129,94 +122,101 @@ const App: React.FC = () => {
     setPurchaseOrders([]);
   };
 
+  // --- CRUD Handlers (Supabase) ---
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
     const productsToAdd = details.trackingType === 'imei' 
-      ? details.imeis.map((imei: string) => ({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available }))
-      : [{ ...productData, trackingType: 'quantity', quantity: details.quantity, status: ProductStatus.Available }];
+      ? details.imeis.map((imei: string) => ({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available, userId: currentUser?.id }))
+      : [{ ...productData, trackingType: 'quantity', quantity: details.quantity, status: ProductStatus.Available, userId: currentUser?.id }];
 
-    const result = await fetchWithFallback('products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productsToAdd)
-    });
-
-    if (result) {
-      const updated = [...products, ...(Array.isArray(result) ? result : [result])];
-      setProducts(updated);
-      saveDataLocally('products', updated);
+    const { data, error } = await supabase.from('products').insert(productsToAdd).select();
+    if (error) {
+        alert(error.message);
+        return null;
     }
-    return result;
+    syncAllData();
+    return data;
   };
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
-    const result = await fetchWithFallback('products', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedProduct)
-    });
-
-    if (result) {
-      const updatedList = products.map(p => p.id === updatedProduct.id ? result : p);
-      setProducts(updatedList);
-      saveDataLocally('products', updatedList);
-    }
+    const { data, error } = await supabase.from('products').update(updatedProduct).eq('id', updatedProduct.id).select().single();
+    if (error) alert(error.message);
+    else syncAllData();
     setEditModalOpen(false);
     setProductToEdit(null);
   };
 
   const handleDeleteProduct = async (productId: string) => {
     if (!confirm('Permanently delete this product?')) return;
-    const result = await fetchWithFallback('products', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: productId })
-    });
-
-    if (result) {
-      const updated = products.filter(p => p.id !== productId);
-      setProducts(updated);
-      saveDataLocally('products', updated);
-    }
+    const { error } = await supabase.from('products').delete().eq('id', productId);
+    if (error) alert(error.message);
+    else syncAllData();
   };
 
-  const handleDeleteResource = async (resource: 'customers' | 'suppliers' | 'categories', id: string) => {
-    if (!confirm(`Permanently delete this ${resource.slice(0, -1)}?`)) return;
-    const result = await fetchWithFallback(resource, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
-    });
-    if (result) syncAllData();
+  const handleDeleteResource = async (table: string, id: string) => {
+    if (!confirm(`Permanently delete this ${table.slice(0, -1)}?`)) return;
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) alert(error.message);
+    else syncAllData();
   };
 
   const handleCreateInvoice = async (customerId: string, items: any[]) => {
-    const result = await fetchWithFallback('invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customerId, items })
-    });
+    const customer = customers.find(c => c.id === customerId);
+    const total = items.reduce((sum, it) => sum + it.sellingPrice * it.quantity, 0);
+    
+    const { data: invoice, error: invError } = await supabase.from('invoices').insert({
+      userId: currentUser?.id,
+      invoiceNumber: `INV-${Date.now()}`,
+      customerId,
+      customerName: customer?.name || 'Customer',
+      totalAmount: total,
+      issueDate: new Date().toISOString()
+    }).select().single();
 
-    if (result) {
-      setInvoices(prev => [result, ...prev]);
-      syncAllData();
-      setInvoiceModalOpen(false);
-      handleDownloadInvoice(result);
+    if (invError) return alert(invError.message);
+
+    const itemsToAdd = items.map(it => ({
+      invoiceId: invoice.id,
+      productId: it.productId,
+      productName: it.productName || 'Product',
+      imei: it.imei || null,
+      quantity: it.quantity,
+      sellingPrice: it.sellingPrice
+    }));
+
+    await supabase.from('invoice_items').insert(itemsToAdd);
+    
+    // Update product statuses
+    for (const it of items) {
+        await supabase.from('products').update({ 
+            status: ProductStatus.Sold, 
+            invoiceId: invoice.id, 
+            customerName: customer?.name 
+        }).eq('id', it.productId);
     }
+
+    syncAllData();
+    setInvoiceModalOpen(false);
+    handleDownloadInvoice({ ...invoice, items: itemsToAdd });
   };
 
   const handleCreatePurchaseOrder = async (poDetails: any, productsData: any) => {
-    const result = await fetchWithFallback('purchase-orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poDetails, productsData })
-    });
+      // Simplified PO creation for Supabase
+      const { data: po, error } = await supabase.from('purchase_orders').insert({
+          ...poDetails,
+          userId: currentUser?.id,
+          issueDate: new Date().toISOString()
+      }).select().single();
 
-    if (result) {
-      setPurchaseOrders(prev => [result.po, ...prev]);
+      if (error) return alert(error.message);
+
+      // Add actual products to stock from PO
+      for (const batch of productsData) {
+          await handleAddProducts(batch.productInfo, { ...batch.details, purchaseOrderId: po.id });
+      }
+
       syncAllData();
       setPurchaseOrderModalOpen(false);
-      handleDownloadPurchaseOrder(result.po);
-    }
+      handleDownloadPurchaseOrder(po);
   };
 
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
@@ -255,7 +255,26 @@ const App: React.FC = () => {
         case 'categories':
             return (
                 <div className="space-y-4">
-                    <CategoryManagement categories={categories} products={products} onAddCategory={name => fetchWithFallback('categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name }) }).then(syncAllData)} onDeleteCategory={id => handleDeleteResource('categories', id)} />
+                    <CategoryManagement 
+                        categories={categories} 
+                        products={products} 
+                        onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} 
+                        onDeleteCategory={id => handleDeleteResource('categories', id)} 
+                    />
+                    <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 mt-8">
+                        <h3 className="text-amber-800 font-bold mb-2">First time setup?</h3>
+                        <p className="text-amber-700 text-sm mb-4">You need to create the tables in your Supabase SQL Editor for the app to work.</p>
+                        <button 
+                            onClick={() => {
+                                const sql = `-- Paste this in Supabase SQL Editor\nCREATE TABLE products (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, "productName" TEXT, category TEXT, "purchaseDate" DATE, "purchasePrice" NUMERIC, "sellingPrice" NUMERIC, status TEXT, notes TEXT, "invoiceId" TEXT, "purchaseOrderId" TEXT, "trackingType" TEXT, imei TEXT, quantity INTEGER, "customerName" TEXT);\nCREATE TABLE customers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, name TEXT, phone TEXT);\nCREATE TABLE suppliers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, name TEXT, email TEXT, phone TEXT);\nCREATE TABLE categories (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, name TEXT);\nCREATE TABLE invoices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, "invoiceNumber" TEXT, "customerId" UUID, "customerName" TEXT, "issueDate" TIMESTAMP, "totalAmount" NUMERIC);\nCREATE TABLE invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID, "productId" UUID, "productName" TEXT, imei TEXT, quantity INTEGER, "sellingPrice" NUMERIC);\nCREATE TABLE purchase_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, "poNumber" TEXT, "supplierId" UUID, "supplierName" TEXT, "issueDate" TIMESTAMP, "totalCost" NUMERIC, status TEXT, notes TEXT);`;
+                                navigator.clipboard.writeText(sql);
+                                alert("SQL Schema copied to clipboard! Paste it into your Supabase SQL Editor.");
+                            }}
+                            className="text-xs font-bold uppercase tracking-widest text-amber-900 bg-amber-200/50 px-4 py-2 rounded-lg hover:bg-amber-200"
+                        >
+                            Copy SQL Schema
+                        </button>
+                    </div>
                 </div>
             );
         default:
@@ -263,7 +282,8 @@ const App: React.FC = () => {
     }
   };
 
-  if (!currentUser) return <AuthScreen onAuthSuccess={handleLoginSuccess} />;
+  if (isAuthChecking) return <div className="min-h-screen flex items-center justify-center bg-slate-100"><div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+  if (!currentUser) return <AuthScreen onAuthSuccess={(u) => setCurrentUser(u)} />;
 
   if (documentToPrint) {
     const documentComponent = documentToPrint.type === 'invoice'
@@ -283,16 +303,15 @@ const App: React.FC = () => {
                         </div>
                         <span className="text-xl font-extrabold tracking-tight text-slate-800">Inventory<span className="text-primary">Track</span></span>
                         
-                        <div className={`ml-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                            <div className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
-                            {dbStatus === 'connected' ? 'Cloud Sync' : 'Offline Mode'}
+                        <div className="ml-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700">
+                            Supabase Cloud
                         </div>
                     </div>
 
                     <div className="flex items-center gap-4">
                         <div className="text-right hidden sm:block">
                             <p className="text-xs font-bold text-slate-900">{currentUser.name || currentUser.email}</p>
-                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Active Account</p>
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Active Member</p>
                         </div>
                         <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Log Out">
                             <LogoutIcon className="w-6 h-6" />
@@ -356,22 +375,22 @@ const App: React.FC = () => {
         </main>
 
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
-            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})}).then(syncAllData)} />
+            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
             {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => setEditModalOpen(false)} categories={categories} />}
         </Modal>
         <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Invoice">
-            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => fetchWithFallback('customers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, phone})}).then(syncAllData)} />
+            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => supabase.from('customers').insert({ name, phone, userId: currentUser?.id }).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New PO">
-            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => fetchWithFallback('suppliers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(s)}).then(syncAllData)} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})}).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
+            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => supabase.from('suppliers').insert({ ...s, userId: currentUser?.id }).then(syncAllData)} categories={categories} onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
         </Modal>
         <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer">
-            <CustomerForm customer={customerToEdit} onSave={c => fetchWithFallback('customers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...c, id: customerToEdit?.id})}).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />
+            <CustomerForm customer={customerToEdit} onSave={c => supabase.from('customers').upsert({ ...c, id: customerToEdit?.id, userId: currentUser?.id }).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />
         </Modal>
         <Modal isOpen={isSupplierModalOpen} onClose={() => setSupplierModalOpen(false)} title="Supplier">
-            <SupplierForm supplier={supplierToEdit} onSave={s => fetchWithFallback('suppliers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...s, id: supplierToEdit?.id})}).then(syncAllData)} onClose={() => setSupplierModalOpen(false)} />
+            <SupplierForm supplier={supplierToEdit} onSave={s => supabase.from('suppliers').upsert({ ...s, id: supplierToEdit?.id, userId: currentUser?.id }).then(syncAllData)} onClose={() => setSupplierModalOpen(false)} />
         </Modal>
     </div>
   );
