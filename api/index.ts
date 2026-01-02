@@ -11,13 +11,13 @@ function getDbConnection() {
     if (!sql) {
         const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
         if (!connectionString) {
-            throw new Error('DATABASE_URL is not configured in Vercel environment variables. Please add your Supabase/Postgres connection string to Vercel.');
+            throw new Error('CRITICAL: DATABASE_URL environment variable is missing. Please add your Supabase/Postgres connection string to your Vercel project settings.');
         }
         sql = postgres(connectionString, {
             ssl: 'require',
             max: 10,
             idle_timeout: 5,
-            connect_timeout: 15,
+            connect_timeout: 20, // Increased for stability
             prepare: false,
         });
     }
@@ -31,17 +31,17 @@ function getUserId(req: VercelRequest): string | null {
 
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`[API ERROR] Resource: ${resourceName} | Message: ${error.message}`);
-    // Always return JSON to prevent frontend from crashing while trying to parse HTML error pages
     return res.status(500).json({ 
-        error: `Error in ${resourceName}`, 
+        error: `Database error in ${resourceName}`, 
         details: error.message,
-        code: error.code || 'UNKNOWN_ERROR'
+        code: error.code || 'DB_ERROR'
     });
 }
 
 const sanitize = (row: any) => {
     if (!row) return row;
     const result = { ...row };
+    // Postgres NUMERIC returns as string, JS needs numbers for calculations
     const numericFields = ['purchasePrice', 'sellingPrice', 'totalAmount', 'totalCost', 'quantity'];
     numericFields.forEach(field => {
         if (result[field] !== undefined && result[field] !== null) {
@@ -52,19 +52,19 @@ const sanitize = (row: any) => {
 };
 
 async function ensureTables(db: postgres.Sql) {
-    try {
-        // Create tables one by one with quoted identifiers for case sensitivity
-        await db`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
-        await db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
-        await db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
-        await db`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
-        await db`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`;
-        await db`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
-        await db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
-        await db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
-    } catch (e) {
-        console.error("Auto-provisioning failed. This is okay if tables already exist.", e);
-    }
+    // Attempt creation individually to avoid transaction aborts on "already exists" errors
+    const createTable = async (query: postgres.PendingQuery<any>) => {
+        try { await query; } catch (e) { /* Table likely exists */ }
+    };
+
+    await createTable(db`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`);
+    await createTable(db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`);
 }
 
 async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db: postgres.Sql, userId: string, tableName: string) {
@@ -108,13 +108,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (endpoint === 'login') {
                 const { email, password } = req.body;
                 const result = await db`SELECT id, email, name FROM users WHERE email = ${email} AND password = ${password}`;
-                if (result.length === 0) return res.status(401).json({ error: 'Invalid email or password.' });
+                if (result.length === 0) return res.status(401).json({ error: 'Invalid credentials.' });
                 return res.status(200).json({ user: sanitize(result[0]) });
             }
         }
 
         const userId = getUserId(req);
-        if (!userId) return res.status(401).json({ error: 'Session expired.' });
+        if (!userId) return res.status(401).json({ error: 'Unauthorized.' });
 
         switch (resource) {
             case 'categories':
@@ -191,15 +191,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 break;
             
             case 'generate-insights':
-                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 15))}. Give 3 specific tips.`;
-                const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-                return res.status(200).json({ insights: response.text });
+                try {
+                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                    const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 15))}. Give 3 specific tips for growth.`;
+                    const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
+                    return res.status(200).json({ insights: response.text });
+                } catch (aiErr: any) {
+                    return res.status(500).json({ error: "Insight failed", details: aiErr.message });
+                }
 
             default:
-                return res.status(404).json({ error: 'Endpoint not found' });
+                return res.status(404).json({ error: 'Not found' });
         }
     } catch (e: any) {
-        return handleError(res, e, 'global_handler');
+        return handleError(res, e, 'global');
     }
 }

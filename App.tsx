@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
   const [isLoading, setIsLoading] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('active');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -53,14 +54,13 @@ const App: React.FC = () => {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
 
-  // --- Session Management ---
   useEffect(() => {
     const savedUser = localStorage.getItem('inventory_user_data');
     if (savedUser) {
       try {
         setCurrentUser(JSON.parse(savedUser));
       } catch (e) {
-        console.error("Session parse error", e);
+        localStorage.removeItem('inventory_user_data');
       }
     }
     setIsAuthChecking(false);
@@ -69,6 +69,7 @@ const App: React.FC = () => {
   const syncAllData = useCallback(async () => {
     if (!currentUser) return;
     setIsLoading(true);
+    setSyncError(null);
     try {
       const [p, c, cat, inv, po, sup] = await Promise.all([
         api.products.list(),
@@ -79,15 +80,14 @@ const App: React.FC = () => {
         api.suppliers.list()
       ]);
 
-      // Defensive validation: ensure data is array before setting state
       if (Array.isArray(p)) setProducts(p);
       if (Array.isArray(c)) setCustomers(c);
       if (Array.isArray(cat)) setCategories(cat);
       if (Array.isArray(inv)) setInvoices(inv);
       if (Array.isArray(po)) setPurchaseOrders(po);
       if (Array.isArray(sup)) setSuppliers(sup);
-    } catch (e) {
-      console.error("Sync error", e);
+    } catch (e: any) {
+      setSyncError(e.message || "Failed to connect to the database.");
     } finally {
       setIsLoading(false);
     }
@@ -103,10 +103,7 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setProducts([]);
     setInvoices([]);
-    setCustomers([]);
-    setSuppliers([]);
-    setCategories([]);
-    setPurchaseOrders([]);
+    setSyncError(null);
   };
 
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
@@ -127,7 +124,6 @@ const App: React.FC = () => {
       await api.products.update(updatedProduct);
       syncAllData();
       setEditModalOpen(false);
-      setProductToEdit(null);
     } catch (err: any) { alert(err.message); }
   };
 
@@ -149,7 +145,7 @@ const App: React.FC = () => {
 
   const handleCreatePurchaseOrder = async (poDetails: any, productsData: any) => {
     try {
-      await api.purchaseOrders.create({ poDetails: { ...poDetails, totalCost: 0 }, productsData });
+      await api.purchaseOrders.create({ poDetails, productsData });
       syncAllData();
       setPurchaseOrderModalOpen(false);
     } catch (err: any) { alert(err.message); }
@@ -157,24 +153,35 @@ const App: React.FC = () => {
 
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
   const availableProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Available), [products]);
-  const handleDownloadInvoice = (invoice: Invoice) => setDocumentToPrint({ type: 'invoice', data: invoice });
-  const handleDownloadPurchaseOrder = (po: PurchaseOrder) => setDocumentToPrint({ type: 'po', data: po });
 
   const renderContent = () => {
-    if (isLoading && products.length === 0) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+    if (syncError) return (
+        <div className="flex flex-col items-center justify-center py-20 bg-rose-50 rounded-3xl border-2 border-rose-100">
+            <p className="text-rose-600 font-bold mb-4">Connection Failed</p>
+            <p className="text-slate-500 text-sm max-w-md text-center mb-6">{syncError}</p>
+            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-bold">Try Again</button>
+        </div>
+    );
+
+    if (isLoading && products.length === 0) return (
+        <div className="flex flex-col items-center justify-center py-40">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-400 font-medium animate-pulse">Synchronizing Inventory...</p>
+        </div>
+    );
     
     switch(activeTab) {
         case 'active':
         case 'sold':
-            return <ProductList products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} purchaseOrders={purchaseOrders} onEditProduct={product => { setProductToEdit(product); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} listType={activeTab} searchQuery={searchQuery} />;
+            return <ProductList products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} purchaseOrders={purchaseOrders} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} listType={activeTab} searchQuery={searchQuery} />;
         case 'products':
             return <ProductManagementList products={products.filter(p => p.status !== ProductStatus.Archived)} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} />;
         case 'archive':
             return <ArchivedProductList products={products.filter(p => p.status === ProductStatus.Archived)} onUnarchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Available})} onDeleteProduct={handleDeleteProduct} />;
         case 'invoices':
-            return <InvoiceList invoices={invoices} products={products} searchQuery={searchQuery} onDownloadInvoice={handleDownloadInvoice} />;
+            return <InvoiceList invoices={invoices} products={products} searchQuery={searchQuery} onDownloadInvoice={i => setDocumentToPrint({ type: 'invoice', data: i })} />;
         case 'purchaseOrders':
-            return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={handleDownloadPurchaseOrder} />;
+            return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={po => setDocumentToPrint({ type: 'po', data: po })} />;
         case 'customers':
             return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => api.customers.delete(id).then(syncAllData)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} />;
         case 'suppliers':
@@ -186,21 +193,18 @@ const App: React.FC = () => {
     }
   };
 
-  if (isAuthChecking) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
-  if (!currentUser) return <AuthScreen onAuthSuccess={(u) => setCurrentUser(u)} />;
+  if (isAuthChecking) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+  if (!currentUser) return <AuthScreen onAuthSuccess={setCurrentUser} />;
 
   if (documentToPrint) {
-    const documentComponent = documentToPrint.type === 'invoice'
-      ? <InvoicePDF invoice={documentToPrint.data as Invoice} />
-      : <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />;
     return (
       <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
         <div className="sticky top-0 p-4 bg-slate-900 flex justify-between items-center z-50">
-          <span className="text-white font-bold text-sm">Preview</span>
+          <span className="text-white font-bold text-sm">Document Preview</span>
           <button onClick={() => setDocumentToPrint(null)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
         </div>
         <div className="flex justify-center p-8 bg-slate-100 min-h-screen">
-          <div className="shadow-2xl">{documentComponent}</div>
+          <div className="shadow-2xl">{documentToPrint.type === 'invoice' ? <InvoicePDF invoice={documentToPrint.data as Invoice} /> : <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />}</div>
         </div>
       </div>
     );
