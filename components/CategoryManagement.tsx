@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Category, Product } from '../types';
 import { PlusIcon, TrashIcon } from './icons';
@@ -11,6 +12,7 @@ interface CategoryManagementProps {
 
 const CategoryManagement: React.FC<CategoryManagementProps> = ({ categories, products, onAddCategory, onDeleteCategory }) => {
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const productCountByCategory = React.useMemo(() => {
     const counts: { [categoryName: string]: number } = {};
@@ -20,11 +22,18 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ categories, pro
     return counts;
   }, [products]);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newCategoryName.trim()) {
-      onAddCategory(newCategoryName.trim());
-      setNewCategoryName('');
+    if (newCategoryName.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      try {
+        await onAddCategory(newCategoryName.trim());
+        setNewCategoryName('');
+      } catch (err) {
+        alert("Failed to add category. Please try again.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -40,10 +49,10 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ categories, pro
         />
         <button
           type="submit"
-          disabled={!newCategoryName.trim()}
+          disabled={!newCategoryName.trim() || isSubmitting}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50"
         >
-          <PlusIcon className="w-5 h-5" /> Add Category
+          {isSubmitting ? 'Adding...' : <><PlusIcon className="w-5 h-5" /> Add Category</>}
         </button>
       </form>
       
@@ -72,7 +81,7 @@ const CategoryManagement: React.FC<CategoryManagementProps> = ({ categories, pro
             );
           })
         ) : (
-          <p className="text-center text-slate-500">No categories found. Add one to get started.</p>
+          <p className="text-center text-slate-500">No categories found. Add one above.</p>
         )}
       </div>
     </div>
