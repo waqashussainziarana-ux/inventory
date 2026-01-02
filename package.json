@@ -1,3 +1,4 @@
+
 {
   "name": "product-inventory-tracker-vercel",
   "version": "1.0.0",
@@ -9,17 +10,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^0.12.0",
+    "@google/genai": "^0.13.0",
+    "@supabase/supabase-js": "^2.48.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "onscan.js": "^1.5.2",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "postgres": "^3.4.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
-    "@types/react": "^18.2.66",
-    "@types/react-dom": "^18.2.22",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
