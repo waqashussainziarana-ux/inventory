@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Product, ProductStatus, NewProductInfo, Invoice, InvoiceItem, PurchaseOrder, Customer, Category, Supplier, PurchaseOrderStatus } from './types';
+import { Product, ProductStatus, NewProductInfo, Invoice, InvoiceItem, PurchaseOrder, Customer, Category, Supplier, PurchaseOrderStatus, User } from './types';
 import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
 import ProductManagementList from './components/ProductManagementList';
@@ -20,12 +20,19 @@ import CustomerForm from './components/CustomerForm';
 import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AIInsights from './components/AIInsights';
+import AuthScreen from './components/AuthScreen';
 import { downloadPdf } from './utils/pdfGenerator';
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, DownloadIcon, BuildingStorefrontIcon } from './components/icons';
+import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, DownloadIcon, BuildingStorefrontIcon, LogoutIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
 const App: React.FC = () => {
+  // --- Auth State ---
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('inventory-user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   // --- Data State ---
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -54,22 +61,31 @@ const App: React.FC = () => {
 
   // --- API Handlers ---
   const fetchWithFallback = async (endpoint: string, options?: RequestInit) => {
+    if (!currentUser) return null;
+    
+    const headers = {
+      ...(options?.headers || {}),
+      'x-user-id': currentUser.id
+    };
+
     try {
-      const response = await fetch(`/api/${endpoint}`, options);
+      const response = await fetch(`/api/${endpoint}`, { ...options, headers });
       if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
       return await response.json();
     } catch (error) {
-      console.warn(`Database unreachable at /api/${endpoint}, using local data.`, error);
-      const localData = localStorage.getItem(`fallback-${endpoint}`);
+      console.warn(`Database unreachable at /api/${endpoint}, using local fallback.`, error);
+      const localData = localStorage.getItem(`fallback-${currentUser.id}-${endpoint}`);
       return localData ? JSON.parse(localData) : null;
     }
   };
 
-  const saveData = (endpoint: string, data: any) => {
-    localStorage.setItem(`fallback-${endpoint}`, JSON.stringify(data));
+  const saveDataLocally = (endpoint: string, data: any) => {
+    if (!currentUser) return;
+    localStorage.setItem(`fallback-${currentUser.id}-${endpoint}`, JSON.stringify(data));
   };
 
   const syncAllData = useCallback(async () => {
+    if (!currentUser) return;
     setIsLoading(true);
     try {
       const status = await fetch('/api/db-status').then(r => r.json()).catch(() => ({ status: 'error' }));
@@ -84,35 +100,49 @@ const App: React.FC = () => {
         fetchWithFallback('suppliers')
       ]);
 
-      if (p) { setProducts(p); saveData('products', p); }
-      if (c) { setCustomers(c); saveData('customers', c); }
-      if (cat) { setCategories(cat); saveData('categories', cat); }
-      if (inv) { setInvoices(inv); saveData('invoices', inv); }
-      if (po) { setPurchaseOrders(po); saveData('purchase-orders', po); }
-      if (sup) { setSuppliers(sup); saveData('suppliers', sup); }
+      if (p) { setProducts(p); saveDataLocally('products', p); }
+      if (c) { setCustomers(c); saveDataLocally('customers', c); }
+      if (cat) { setCategories(cat); saveDataLocally('categories', cat); }
+      if (inv) { setInvoices(inv); saveDataLocally('invoices', inv); }
+      if (po) { setPurchaseOrders(po); saveDataLocally('purchase-orders', po); }
+      if (sup) { setSuppliers(sup); saveDataLocally('suppliers', sup); }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
-    syncAllData();
-  }, [syncAllData]);
+    if (currentUser) {
+      syncAllData();
+    }
+  }, [currentUser, syncAllData]);
 
-  // Handle Initialize DB
+  const handleLoginSuccess = (user: User) => {
+    localStorage.setItem('inventory-user', JSON.stringify(user));
+    setCurrentUser(user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('inventory-user');
+    setCurrentUser(null);
+    setProducts([]);
+    setInvoices([]);
+    // Reset other state as needed
+  };
+
   const handleInitDb = async () => {
-    if (!confirm("This will create necessary tables in your online database. Continue?")) return;
+    if (!confirm("This will initialize tables for all users. Continue?")) return;
     try {
         const res = await fetch('/api/setup', { method: 'POST' });
         const data = await res.json();
         alert(data.message || "Database setup complete!");
         syncAllData();
     } catch (e) {
-        alert("Failed to initialize database. Check your DATABASE_URL.");
+        alert("Failed to initialize database. Check your environment configuration.");
     }
   };
 
-  // --- CRUD Proxies ---
+  // --- CRUD Proxies (Modified for User Scope) ---
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
     const productsToAdd = details.trackingType === 'imei' 
       ? details.imeis.map((imei: string) => ({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available }))
@@ -127,7 +157,7 @@ const App: React.FC = () => {
     if (result) {
       const updated = [...products, ...(Array.isArray(result) ? result : [result])];
       setProducts(updated);
-      saveData('products', updated);
+      saveDataLocally('products', updated);
     }
     return result;
   };
@@ -142,7 +172,7 @@ const App: React.FC = () => {
     if (result) {
       const updatedList = products.map(p => p.id === updatedProduct.id ? result : p);
       setProducts(updatedList);
-      saveData('products', updatedList);
+      saveDataLocally('products', updatedList);
     }
     setEditModalOpen(false);
     setProductToEdit(null);
@@ -159,7 +189,7 @@ const App: React.FC = () => {
     if (result || dbStatus === 'offline') {
       const updated = products.filter(p => p.id !== productId);
       setProducts(updated);
-      saveData('products', updated);
+      saveDataLocally('products', updated);
     }
   };
 
@@ -172,7 +202,7 @@ const App: React.FC = () => {
 
     if (result) {
       setInvoices(prev => [result, ...prev]);
-      syncAllData(); // Refresh products status
+      syncAllData();
       setInvoiceModalOpen(false);
       handleDownloadInvoice(result);
     }
@@ -193,10 +223,9 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Helpers ---
+  // --- Helpers & Renderers ---
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
   const availableProducts = useMemo(() => products.filter(p => p.status === ProductStatus.Available), [products]);
-  
   const handleDownloadInvoice = (invoice: Invoice) => setDocumentToPrint({ type: 'invoice', data: invoice });
   const handleDownloadPurchaseOrder = (po: PurchaseOrder) => setDocumentToPrint({ type: 'po', data: po });
 
@@ -232,15 +261,21 @@ const App: React.FC = () => {
             return (
                 <div className="space-y-4">
                     <CategoryManagement categories={categories} products={products} onAddCategory={name => fetchWithFallback('categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name }) }).then(syncAllData)} onDeleteCategory={id => console.log('Delete category')} />
-                    <div className="pt-8 border-t flex justify-center">
-                        <button onClick={handleInitDb} className="text-xs font-bold text-slate-400 hover:text-primary transition-colors uppercase tracking-widest">Re-Initialize Cloud Database</button>
-                    </div>
+                    {currentUser?.email === 'admin@gadgetwall.com' && (
+                        <div className="pt-8 border-t flex justify-center">
+                            <button onClick={handleInitDb} className="text-xs font-bold text-slate-400 hover:text-primary transition-colors uppercase tracking-widest">Global Admin: Initialize Cloud Database</button>
+                        </div>
+                    )}
                 </div>
             );
         default:
              return <Dashboard products={products} invoices={invoices} />;
     }
   };
+
+  if (!currentUser) {
+    return <AuthScreen onAuthSuccess={handleLoginSuccess} />;
+  }
 
   if (documentToPrint) {
     const documentComponent = documentToPrint.type === 'invoice'
@@ -262,8 +297,22 @@ const App: React.FC = () => {
                         
                         <div className={`ml-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                             <div className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
-                            {dbStatus === 'connected' ? 'Online' : 'Offline Mode'}
+                            {dbStatus === 'connected' ? 'Cloud Sync' : 'Offline Mode'}
                         </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <div className="text-right hidden sm:block">
+                            <p className="text-xs font-bold text-slate-900">{currentUser.name || currentUser.email}</p>
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Active Account</p>
+                        </div>
+                        <button 
+                            onClick={handleLogout}
+                            className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                            title="Log Out"
+                        >
+                            <LogoutIcon className="w-6 h-6" />
+                        </button>
                     </div>
                 </div>
             </div>
@@ -322,17 +371,18 @@ const App: React.FC = () => {
             </section>
         </main>
 
+        {/* Modals remain similarly structured but pass userId where needed via hooks/proxies */}
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
-            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})})} />
+            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})}).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
             {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => setEditModalOpen(false)} categories={categories} />}
         </Modal>
         <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Invoice">
-            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => fetchWithFallback('customers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, phone})})} />
+            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => fetchWithFallback('customers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, phone})}).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New PO">
-            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => fetchWithFallback('suppliers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(s)})} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})})} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
+            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => fetchWithFallback('suppliers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(s)}).then(syncAllData)} categories={categories} onAddCategory={name => fetchWithFallback('categories', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})}).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
         </Modal>
         <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer">
             <CustomerForm customer={customerToEdit} onSave={c => fetchWithFallback('customers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...c, id: customerToEdit?.id})}).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />

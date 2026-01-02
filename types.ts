@@ -1,11 +1,19 @@
+
 export enum ProductStatus {
   Available = 'Available',
   Sold = 'Sold',
   Archived = 'Archived',
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+}
+
 export interface Product {
   id: string;
+  userId: string;
   productName: string;
   category: string;
   purchaseDate: string;
@@ -15,17 +23,14 @@ export interface Product {
   notes?: string;
   invoiceId?: string;
   purchaseOrderId?: string;
-  
   trackingType: 'imei' | 'quantity';
   imei?: string;
   quantity: number;
-
   customerName?: string;
 }
 
-export type NewProduct = Omit<Product, 'id'>;
-export type NewProductInfo = Omit<NewProduct, 'id' | 'imei' | 'purchaseOrderId' | 'quantity' | 'trackingType' | 'status'>;
-
+export type NewProduct = Omit<Product, 'id' | 'userId'>;
+export type NewProductInfo = Omit<NewProduct, 'imei' | 'purchaseOrderId' | 'quantity' | 'trackingType' | 'status'>;
 
 export interface ProductGroup {
   key: string;
@@ -46,6 +51,7 @@ export interface InvoiceItem {
 
 export interface Invoice {
   id: string;
+  userId: string;
   invoiceNumber: string;
   customerId: string; 
   customerName: string;
@@ -56,17 +62,20 @@ export interface Invoice {
 
 export interface Category {
     id: string;
+    userId: string;
     name: string;
 }
 
 export interface Customer {
     id: string;
+    userId: string;
     name: string;
     phone: string;
 }
 
 export interface Supplier {
     id: string;
+    userId: string;
     name: string;
     email?: string;
     phone?: string;
@@ -76,6 +85,7 @@ export type PurchaseOrderStatus = 'Draft' | 'Ordered' | 'Completed';
 
 export interface PurchaseOrder {
     id: string;
+    userId: string;
     poNumber: string;
     supplierId: string;
     supplierName: string;
