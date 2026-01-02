@@ -11,24 +11,19 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
     ...options.headers,
   };
 
-  console.log(`[API] ${options.method || 'GET'} ${endpoint}`);
-  
-  const response = await fetch(endpoint, { ...options, headers });
-  
-  // Try to parse JSON but handle non-json errors gracefully
-  let data;
   try {
-    data = await response.json();
-  } catch (e) {
-    data = { error: 'Failed to parse response' };
-  }
+    const response = await fetch(endpoint, { ...options, headers });
+    const data = await response.json();
 
-  if (!response.ok) {
-    console.error(`[API ERROR] ${endpoint}:`, data);
-    throw new Error(data.error || data.details || 'Server communication error');
-  }
+    if (!response.ok) {
+      throw new Error(data.error || data.details || 'Server communication error');
+    }
 
-  return data;
+    return data;
+  } catch (err: any) {
+    console.error(`[API Error] ${endpoint}:`, err);
+    throw err;
+  }
 };
 
 export const api = {

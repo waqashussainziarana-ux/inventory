@@ -11,13 +11,13 @@ function getDbConnection() {
     if (!sql) {
         const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
         if (!connectionString) {
-            throw new Error('DATABASE_URL is not configured in Vercel environment variables.');
+            throw new Error('DATABASE_URL is not configured in Vercel environment variables. Please add your Supabase/Postgres connection string to Vercel.');
         }
         sql = postgres(connectionString, {
             ssl: 'require',
             max: 10,
             idle_timeout: 5,
-            connect_timeout: 10,
+            connect_timeout: 15,
             prepare: false,
         });
     }
@@ -31,14 +31,14 @@ function getUserId(req: VercelRequest): string | null {
 
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`[API ERROR] Resource: ${resourceName} | Message: ${error.message}`);
+    // Always return JSON to prevent frontend from crashing while trying to parse HTML error pages
     return res.status(500).json({ 
-        error: `Database Error in ${resourceName}`, 
+        error: `Error in ${resourceName}`, 
         details: error.message,
-        code: error.code
+        code: error.code || 'UNKNOWN_ERROR'
     });
 }
 
-// Helper to cast numeric strings to numbers for the frontend
 const sanitize = (row: any) => {
     if (!row) return row;
     const result = { ...row };
@@ -53,28 +53,17 @@ const sanitize = (row: any) => {
 
 async function ensureTables(db: postgres.Sql) {
     try {
-        const tableExists = await db`
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'users'
-            );
-        `;
-
-        if (!tableExists[0].exists) {
-            console.log("Initializing database tables...");
-            await db.begin(async (sql) => {
-                await sql`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
-                await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
-                await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
-                await sql`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
-                await sql`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`;
-                await sql`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
-                await sql`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
-                await sql`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
-            });
-        }
+        // Create tables one by one with quoted identifiers for case sensitivity
+        await db`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
+        await db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
+        await db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
+        await db`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
+        await db`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`;
+        await db`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
+        await db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
+        await db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
     } catch (e) {
-        console.error("ensureTables failed:", e);
+        console.error("Auto-provisioning failed. This is okay if tables already exist.", e);
     }
 }
 
@@ -86,7 +75,6 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
         }
         if (req.method === 'POST') {
             const id = randomUUID();
-            // Crucial: Use keys that match DB columns exactly
             const dataToInsert = { ...req.body, id, "userId": userId };
             const result = await db`
                 INSERT INTO ${db(tableName)} ${db(dataToInsert)}
@@ -204,14 +192,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             
             case 'generate-insights':
                 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 20))}. Give 3 specific business growth tips.`;
+                const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 15))}. Give 3 specific tips.`;
                 const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
                 return res.status(200).json({ insights: response.text });
 
             default:
                 return res.status(404).json({ error: 'Endpoint not found' });
         }
-    } catch (e) {
+    } catch (e: any) {
         return handleError(res, e, 'global_handler');
     }
 }
