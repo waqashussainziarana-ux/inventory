@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { BuildingStorefrontIcon } from './icons';
-import { User } from '../types';
-import { api } from '../lib/api';
+import { BuildingStorefrontIcon } from './components/icons';
+import { User } from './types';
+import { api } from './lib/api';
 
 interface AuthScreenProps {
   onAuthSuccess: (user: User) => void;
@@ -29,12 +29,13 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         if (user) {
           localStorage.setItem('inventory_user_id', user.id);
           localStorage.setItem('inventory_user_data', JSON.stringify(user));
+          // Success callback
           onAuthSuccess(user);
         }
       } else {
         const { user } = await api.auth.signup({ email, password, name });
         if (user) {
-            setSuccessMsg("Account created! You can now log in.");
+            setSuccessMsg("Account created successfully! You can now log in.");
             setIsLogin(true);
             setPassword('');
         }
@@ -116,7 +117,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             </div>
 
             {error && (
-              <div className="p-5 bg-rose-50 rounded-2xl border-2 border-rose-100">
+              <div className="p-5 bg-rose-50 rounded-2xl border-2 border-rose-100 animate-in fade-in slide-in-from-top-2 duration-300">
                 <p className="text-rose-600 text-xs font-bold leading-relaxed">{error}</p>
               </div>
             )}

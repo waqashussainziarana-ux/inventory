@@ -5,6 +5,12 @@ const getUserId = () => localStorage.getItem('inventory_user_id');
 
 const request = async (endpoint: string, options: RequestInit = {}) => {
   const userId = getUserId();
+  const isAuthRoute = endpoint.includes('/api/auth/');
+  
+  if (!userId && !isAuthRoute) {
+    throw new Error('Session expired. Please log in again.');
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...(userId ? { 'x-user-id': userId } : {}),
@@ -13,7 +19,12 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
 
   try {
     const response = await fetch(endpoint, { ...options, headers });
-    const data = await response.json();
+    let data;
+    try {
+        data = await response.json();
+    } catch (e) {
+        throw new Error('Server returned an invalid response. Please try again later.');
+    }
 
     if (!response.ok) {
       throw new Error(data.error || data.details || 'Server communication error');
@@ -21,7 +32,7 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
 
     return data;
   } catch (err: any) {
-    console.error(`[API Error] ${endpoint}:`, err);
+    console.error(`[API Error] ${endpoint}:`, err.message);
     throw err;
   }
 };

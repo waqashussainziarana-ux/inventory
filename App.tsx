@@ -20,7 +20,7 @@ import CustomerForm from './components/CustomerForm';
 import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AIInsights from './components/AIInsights';
-import AuthScreen from './components/AuthScreen';
+import AuthScreen from './AuthScreen';
 import { api } from './lib/api';
 import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon } from './components/icons';
 
@@ -61,13 +61,16 @@ const App: React.FC = () => {
         setCurrentUser(JSON.parse(savedUser));
       } catch (e) {
         localStorage.removeItem('inventory_user_data');
+        localStorage.removeItem('inventory_user_id');
       }
     }
     setIsAuthChecking(false);
   }, []);
 
   const syncAllData = useCallback(async () => {
-    if (!currentUser) return;
+    const storedId = localStorage.getItem('inventory_user_id');
+    if (!currentUser || !storedId) return;
+
     setIsLoading(true);
     setSyncError(null);
     try {
@@ -87,7 +90,8 @@ const App: React.FC = () => {
       if (Array.isArray(po)) setPurchaseOrders(po);
       if (Array.isArray(sup)) setSuppliers(sup);
     } catch (e: any) {
-      setSyncError(e.message || "Failed to connect to the database.");
+      console.error("Sync failure:", e);
+      setSyncError(e.message || "Failed to synchronize with the database.");
     } finally {
       setIsLoading(false);
     }
@@ -156,17 +160,18 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (syncError) return (
-        <div className="flex flex-col items-center justify-center py-20 bg-rose-50 rounded-3xl border-2 border-rose-100">
-            <p className="text-rose-600 font-bold mb-4">Connection Failed</p>
-            <p className="text-slate-500 text-sm max-w-md text-center mb-6">{syncError}</p>
-            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-bold">Try Again</button>
+        <div className="flex flex-col items-center justify-center py-20 bg-rose-50 rounded-3xl border-2 border-rose-100 p-8 text-center">
+            <div className="bg-rose-100 p-3 rounded-2xl mb-4"><CloseIcon className="w-8 h-8 text-rose-600" /></div>
+            <p className="text-rose-600 font-black uppercase tracking-widest text-sm mb-2">Sync Connection Failed</p>
+            <p className="text-slate-500 text-sm max-w-md mb-6">{syncError}</p>
+            <button onClick={syncAllData} className="px-8 py-3 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-100 hover:bg-primary-hover transition-all">Try Again</button>
         </div>
     );
 
     if (isLoading && products.length === 0) return (
         <div className="flex flex-col items-center justify-center py-40">
             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-400 font-medium animate-pulse">Synchronizing Inventory...</p>
+            <p className="text-slate-400 font-medium animate-pulse">Establishing Connection...</p>
         </div>
     );
     

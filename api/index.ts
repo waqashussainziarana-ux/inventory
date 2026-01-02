@@ -26,14 +26,14 @@ function getDbConnection() {
 
 // --- HELPERS ---
 function getUserId(req: VercelRequest): string | null {
-    return (req.headers['x-user-id'] as string) || null;
+    const userId = req.headers['x-user-id'];
+    return Array.isArray(userId) ? userId[0] : (userId as string) || null;
 }
 
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`[API ERROR] ${resourceName}:`, error.message);
-    // CRITICAL: Always return JSON, never HTML, to prevent frontend "Unexpected token <" errors
     return res.status(500).json({ 
-        error: `Backend Error: ${resourceName}`, 
+        error: `Server Error: ${resourceName}`, 
         details: error.message,
         code: error.code || 'UNKNOWN_ERROR'
     });
@@ -42,21 +42,17 @@ function handleError(res: VercelResponse, error: any, resourceName: string) {
 const sanitize = (row: any) => {
     if (!row) return row;
     const result = { ...row };
-    // Postgres returns NUMERIC as string, convert to Number for JS
     const numericFields = ['purchasePrice', 'sellingPrice', 'totalAmount', 'totalCost', 'quantity'];
     numericFields.forEach(field => {
         if (result[field] !== undefined && result[field] !== null) {
             result[field] = Number(result[field]);
         }
     });
-    // Map database snake_case or quoted columns to camelCase if needed, 
-    // but here we use quoted names in SQL to match the types exactly.
     return result;
 };
 
 async function ensureTables(db: postgres.Sql) {
     try {
-        // Run creation queries individually to avoid transaction failures if one table already exists
         await db`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
         await db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
         await db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
@@ -66,7 +62,7 @@ async function ensureTables(db: postgres.Sql) {
         await db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
         await db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
     } catch (e) {
-        console.warn("Table check/creation skipped or failed (likely already exists).");
+        console.warn("Table initialization check completed.");
     }
 }
 
@@ -78,7 +74,6 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
         }
         if (req.method === 'POST') {
             const id = randomUUID();
-            // Crucial: Use keys that match DB columns exactly
             const dataToInsert = { ...req.body, id, "userId": userId };
             const result = await db`
                 INSERT INTO ${db(tableName)} ${db(dataToInsert)}
@@ -99,11 +94,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const db = getDbConnection();
         await ensureTables(db);
 
-        // Normalize URL to extract resource
-        const url = req.url || '';
-        const parts = url.replace('/api/', '').split('/');
+        // Standardize URL parsing
+        const fullUrl = req.url || '';
+        const cleanPath = fullUrl.split('?')[0].replace(/^\/api\//, '').replace(/\/$/, '');
+        const parts = cleanPath.split('/');
         const resource = parts[0];
 
+        // 1. PUBLIC ROUTES
         if (resource === 'auth') {
             const endpoint = parts[1];
             if (endpoint === 'signup') {
@@ -117,10 +114,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (result.length === 0) return res.status(401).json({ error: 'Invalid email or password.' });
                 return res.status(200).json({ user: sanitize(result[0]) });
             }
+            return res.status(404).json({ error: 'Auth endpoint not found' });
         }
 
+        // 2. PROTECTED ROUTES - Check for userId
         const userId = getUserId(req);
-        if (!userId) return res.status(401).json({ error: 'Unauthorized: No User ID provided in headers.' });
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized: Missing User ID. Please log in again.' });
+        }
 
         switch (resource) {
             case 'categories':
@@ -199,15 +200,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             case 'generate-insights':
                 try {
                     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 15))}. Suggest 3 business strategies.`;
+                    const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 10))}. Suggest 3 strategies.`;
                     const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
                     return res.status(200).json({ insights: response.text });
                 } catch (e: any) {
-                    return res.status(500).json({ error: "AI Insight Failed", details: e.message });
+                    return res.status(500).json({ error: "Insight failed", details: e.message });
                 }
 
             default:
-                return res.status(404).json({ error: `Resource '${resource}' not found` });
+                return res.status(404).json({ error: `Not found: ${resource}` });
         }
     } catch (e: any) {
         return handleError(res, e, 'global_handler');
