@@ -2,12 +2,14 @@
 import React, { useState, useMemo } from 'react';
 import { Product, ProductStatus } from '../types';
 import { PencilIcon, TrashIcon, ArchiveBoxIcon } from './icons';
+import Highlight from './Highlight';
 
 interface ProductManagementListProps {
   products: Product[];
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onArchiveProduct: (productId: string) => void;
+  searchQuery: string;
 }
 
 type SortKey = keyof Product;
@@ -45,8 +47,18 @@ const useSortableData = (items: Product[], initialSortKey: SortKey = 'purchaseDa
     return { items: sortedItems, requestSort, sortKey, sortDirection };
 };
 
-const ProductManagementList: React.FC<ProductManagementListProps> = ({ products, onEditProduct, onDeleteProduct, onArchiveProduct }) => {
-    const activeProducts = products.filter(p => p.status !== ProductStatus.Archived);
+const ProductManagementList: React.FC<ProductManagementListProps> = ({ products, onEditProduct, onDeleteProduct, onArchiveProduct, searchQuery }) => {
+    const activeProducts = useMemo(() => {
+        const base = products.filter(p => p.status !== ProductStatus.Archived);
+        if (!searchQuery) return base;
+        const lowerQuery = searchQuery.toLowerCase();
+        return base.filter(p => 
+            p.productName.toLowerCase().includes(lowerQuery) || 
+            (p.imei && p.imei.toLowerCase().includes(lowerQuery)) ||
+            p.category.toLowerCase().includes(lowerQuery)
+        );
+    }, [products, searchQuery]);
+
     const { items, requestSort, sortKey, sortDirection } = useSortableData(activeProducts);
     const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
     
@@ -54,16 +66,18 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
         const isSorted = sortKey === sortKeyName;
         const arrow = isSorted ? (sortDirection === 'asc' ? '▲' : '▼') : '';
         return (
-            <th scope="col" className="px-3 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500 cursor-pointer hover:text-primary transition-colors" onClick={() => requestSort(sortKeyName)}>
-                {children} <span className="text-[8px]">{arrow}</span>
+            <th scope="col" className="px-3 py-4 text-left text-xs font-black uppercase tracking-widest text-slate-500 cursor-pointer hover:text-primary transition-colors" onClick={() => requestSort(sortKeyName)}>
+                {children} <span className="text-[10px]">{arrow}</span>
             </th>
         );
     };
 
-    if (products.length === 0) {
+    if (activeProducts.length === 0) {
         return (
-          <div className="text-center py-10">
-            <h3 className="text-sm font-bold text-slate-700">No products found.</h3>
+          <div className="text-center py-20">
+            <h3 className="text-lg font-bold text-slate-700">
+                {searchQuery ? `No active products matching "${searchQuery}"` : 'No active products found.'}
+            </h3>
           </div>
         );
     }
@@ -81,35 +95,41 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                             <SortableHeader sortKeyName="purchasePrice">Cost</SortableHeader>
                             <SortableHeader sortKeyName="sellingPrice">Price</SortableHeader>
                             <SortableHeader sortKeyName="status">Status</SortableHeader>
-                            <th scope="col" className="relative py-3 pl-3 pr-4 sm:pr-0"></th>
+                            <th scope="col" className="relative py-4 pl-3 pr-4 sm:pr-0"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                         {items.map((product) => (
                             <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="whitespace-nowrap py-3 pr-3 text-sm">
-                                    <div className="font-bold text-slate-900">{product.productName}</div>
-                                    <div className="text-[10px] text-slate-400 font-black uppercase tracking-tight">{product.category}</div>
+                                <td className="whitespace-nowrap py-4 pr-3 text-sm">
+                                    <div className="font-bold text-slate-900">
+                                        <Highlight text={product.productName} query={searchQuery} />
+                                    </div>
+                                    <div className="text-[11px] text-slate-400 font-black uppercase tracking-tight">
+                                        <Highlight text={product.category} query={searchQuery} />
+                                    </div>
                                 </td>
-                                <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500 font-mono">{product.imei || 'N/A'}</td>
-                                <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{product.quantity}</td>
-                                <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600 font-medium">{formatCurrency(product.purchasePrice)}</td>
-                                <td className="whitespace-nowrap px-3 py-3 text-xs text-primary font-bold">{formatCurrency(product.sellingPrice)}</td>
-                                <td className="whitespace-nowrap px-3 py-3 text-xs">
-                                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                <td className="whitespace-nowrap px-3 py-4 text-xs text-slate-500 font-mono">
+                                    <Highlight text={product.imei || 'N/A'} query={searchQuery} />
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-600">{product.quantity}</td>
+                                <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-600 font-medium">{formatCurrency(product.purchasePrice)}</td>
+                                <td className="whitespace-nowrap px-3 py-4 text-sm text-primary font-bold">{formatCurrency(product.sellingPrice)}</td>
+                                <td className="whitespace-nowrap px-3 py-4 text-xs">
+                                    <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-black uppercase tracking-wider ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                                         {product.status}
                                     </span>
                                 </td>
-                                <td className="relative whitespace-nowrap py-3 pl-3 pr-4 text-right text-xs font-medium sm:pr-0">
-                                   <div className="flex items-center justify-end gap-3">
+                                <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0">
+                                   <div className="flex items-center justify-end gap-4">
                                      <button onClick={() => onArchiveProduct(product.id)} className="text-slate-400 hover:text-slate-600" title="Archive">
-                                         <ArchiveBoxIcon className="w-4 h-4" />
+                                         <ArchiveBoxIcon className="w-5 h-5" />
                                      </button>
                                      <button onClick={() => onEditProduct(product)} className="text-slate-400 hover:text-primary" title="Edit">
-                                         <PencilIcon className="w-4 h-4" />
+                                         <PencilIcon className="w-5 h-5" />
                                      </button>
                                      <button onClick={() => onDeleteProduct(product.id)} className="text-slate-400 hover:text-rose-600" title="Delete">
-                                         <TrashIcon className="w-4 h-4" />
+                                         <TrashIcon className="w-5 h-5" />
                                      </button>
                                    </div>
                                 </td>
@@ -120,47 +140,53 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
             </div>
 
             {/* Mobile Card View */}
-            <div className="md:hidden space-y-3">
+            <div className="md:hidden space-y-4">
                 {items.map((product) => (
-                    <div key={product.id} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm space-y-3">
+                    <div key={product.id} className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4">
                         <div className="flex justify-between items-start">
                             <div>
-                                <h4 className="font-bold text-slate-900 leading-tight text-sm">{product.productName}</h4>
-                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">{product.category}</span>
+                                <h4 className="font-bold text-slate-900 leading-tight text-base sm:text-lg">
+                                    <Highlight text={product.productName} query={searchQuery} />
+                                </h4>
+                                <span className="text-xs font-black uppercase tracking-widest text-slate-400">
+                                    <Highlight text={product.category} query={searchQuery} />
+                                </span>
                             </div>
-                            <span className={`px-2 py-0.5 text-[11px] font-black uppercase tracking-wider rounded-md ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                            <span className={`px-2.5 py-1 text-xs font-black uppercase tracking-wider rounded-md ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                                 {product.status}
                             </span>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-2 py-3 border-y border-slate-50">
+                        <div className="grid grid-cols-2 gap-3 py-4 border-y border-slate-50">
                             <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase">Cost</p>
-                                <p className="text-sm font-medium text-slate-600">{formatCurrency(product.purchasePrice)}</p>
+                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Cost</p>
+                                <p className="text-sm sm:text-base font-medium text-slate-600">{formatCurrency(product.purchasePrice)}</p>
                             </div>
                             <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase">Price</p>
-                                <p className="text-sm font-bold text-primary">{formatCurrency(product.sellingPrice)}</p>
+                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Price</p>
+                                <p className="text-sm sm:text-base font-bold text-primary">{formatCurrency(product.sellingPrice)}</p>
                             </div>
                             {product.imei && (
-                                <div className="col-span-2">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase">IMEI</p>
-                                    <p className="text-sm font-mono text-slate-500 break-all">{product.imei}</p>
+                                <div className="col-span-2 mt-1">
+                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">IMEI</p>
+                                    <p className="text-sm font-mono text-slate-500 break-all">
+                                        <Highlight text={product.imei} query={searchQuery} />
+                                    </p>
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex justify-end gap-5 pt-1">
-                            <button onClick={() => onArchiveProduct(product.id)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-slate-400">
-                                <ArchiveBoxIcon className="w-4 h-4" />
+                        <div className="flex justify-end gap-6 pt-1">
+                            <button onClick={() => onArchiveProduct(product.id)} className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-600">
+                                <ArchiveBoxIcon className="w-5 h-5" />
                                 Archive
                             </button>
-                            <button onClick={() => onEditProduct(product)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-primary">
-                                <PencilIcon className="w-4 h-4" />
+                            <button onClick={() => onEditProduct(product)} className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-primary hover:text-primary-hover">
+                                <PencilIcon className="w-5 h-5" />
                                 Edit
                             </button>
-                            <button onClick={() => onDeleteProduct(product.id)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-rose-500">
-                                <TrashIcon className="w-4 h-4" />
+                            <button onClick={() => onDeleteProduct(product.id)} className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-rose-500 hover:text-rose-600">
+                                <TrashIcon className="w-5 h-5" />
                                 Delete
                             </button>
                         </div>

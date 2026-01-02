@@ -1,7 +1,8 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Supplier, PurchaseOrder } from '../types';
 import { PlusIcon, TrashIcon, PencilIcon } from './icons';
+import Highlight from './Highlight';
 
 interface SupplierListProps {
   suppliers: Supplier[];
@@ -9,10 +10,21 @@ interface SupplierListProps {
   onAddSupplier: () => void;
   onEdit: (supplier: Supplier) => void;
   onDelete: (id: string) => void;
+  searchQuery: string;
 }
 
-const SupplierList: React.FC<SupplierListProps> = ({ suppliers, purchaseOrders, onAddSupplier, onEdit, onDelete }) => {
-  const poCountBySupplier = React.useMemo(() => {
+const SupplierList: React.FC<SupplierListProps> = ({ suppliers, purchaseOrders, onAddSupplier, onEdit, onDelete, searchQuery }) => {
+  const filteredSuppliers = useMemo(() => {
+    if (!searchQuery) return suppliers;
+    const lowerQuery = searchQuery.toLowerCase();
+    return suppliers.filter(s => 
+        s.name.toLowerCase().includes(lowerQuery) || 
+        (s.email && s.email.toLowerCase().includes(lowerQuery)) ||
+        (s.phone && s.phone.toLowerCase().includes(lowerQuery))
+    );
+  }, [suppliers, searchQuery]);
+
+  const poCountBySupplier = useMemo(() => {
     const counts: { [supplierId: string]: number } = {};
     purchaseOrders.forEach(po => {
       counts[po.supplierId] = (counts[po.supplierId] || 0) + 1;
@@ -23,45 +35,51 @@ const SupplierList: React.FC<SupplierListProps> = ({ suppliers, purchaseOrders, 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-sm sm:text-base lg:text-lg font-black uppercase tracking-widest text-slate-800">Suppliers</h2>
+        <h2 className="text-base sm:text-lg font-black uppercase tracking-widest text-slate-800">Suppliers</h2>
         <button
           onClick={onAddSupplier}
-          className="inline-flex items-center gap-2 px-4 py-2 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all"
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all"
         >
-          <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" /> Add Supplier
+          <PlusIcon className="w-5 h-5" /> Add Supplier
         </button>
       </div>
       
-      {suppliers.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {suppliers.map(supplier => {
+      {filteredSuppliers.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredSuppliers.map(supplier => {
             const count = poCountBySupplier[supplier.id] || 0;
             const canDelete = count === 0;
             return (
-              <div key={supplier.id} className="p-5 sm:p-6 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div key={supplier.id} className="p-6 sm:p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-xl transition-all duration-300">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-base sm:text-xl truncate">{supplier.name}</h4>
-                  <div className="text-[10px] sm:text-xs lg:text-sm text-slate-500 mt-2 space-y-1">
-                    <p className="truncate opacity-80">{supplier.email || 'No email provided'}</p>
-                    <p className="font-medium text-slate-600">{supplier.phone || 'No phone provided'}</p>
+                  <h4 className="font-bold text-slate-900 text-lg sm:text-xl truncate">
+                    <Highlight text={supplier.name} query={searchQuery} />
+                  </h4>
+                  <div className="text-sm sm:text-base text-slate-500 mt-2 space-y-1">
+                    <p className="truncate opacity-80">
+                      <Highlight text={supplier.email || 'No email provided'} query={searchQuery} />
+                    </p>
+                    <p className="font-medium text-slate-600">
+                      <Highlight text={supplier.phone || 'No phone provided'} query={searchQuery} />
+                    </p>
                   </div>
                   <div className="mt-4">
-                    <span className="text-[9px] sm:text-[11px] lg:text-xs font-black uppercase tracking-widest bg-slate-100 text-slate-500 px-3 py-1 rounded-lg">
+                    <span className="text-xs font-black uppercase tracking-widest bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">
                       {count} {count === 1 ? 'Order' : 'Orders'}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-slate-50">
-                  <button onClick={() => onEdit(supplier)} className="p-2 text-slate-400 hover:text-primary transition-colors">
-                    <PencilIcon className="w-5 h-5" />
+                <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-slate-50">
+                  <button onClick={() => onEdit(supplier)} className="p-2.5 text-slate-400 hover:text-primary transition-colors">
+                    <PencilIcon className="w-6 h-6" />
                   </button>
                   <button
                     onClick={() => onDelete(supplier.id)}
                     disabled={!canDelete}
-                    className="p-2 text-slate-400 hover:text-rose-500 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    className="p-2.5 text-slate-400 hover:text-rose-500 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                     title={canDelete ? "Delete" : "Has active orders"}
                   >
-                    <TrashIcon className="w-5 h-5" />
+                    <TrashIcon className="w-6 h-6" />
                   </button>
                 </div>
               </div>
@@ -70,8 +88,12 @@ const SupplierList: React.FC<SupplierListProps> = ({ suppliers, purchaseOrders, 
         </div>
       ) : (
         <div className="text-center py-20 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-           <p className="text-slate-400 font-bold sm:text-lg">No suppliers registered yet.</p>
-           <button onClick={onAddSupplier} className="mt-4 text-primary font-black uppercase tracking-widest text-[10px] sm:text-xs">Add First Supplier</button>
+           <p className="text-slate-500 font-bold text-lg">
+             {searchQuery ? `No suppliers matching "${searchQuery}"` : 'No suppliers registered yet.'}
+           </p>
+           {!searchQuery && (
+             <button onClick={onAddSupplier} className="mt-4 text-primary font-black uppercase tracking-widest text-xs">Add First Supplier</button>
+           )}
         </div>
       )}
     </div>

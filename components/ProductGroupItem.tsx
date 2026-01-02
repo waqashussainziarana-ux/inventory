@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { ProductGroup, Product, ProductStatus, PurchaseOrder } from '../types';
 import InventoryDetail from './InventoryDetail';
+import Highlight from './Highlight';
 
 interface ProductGroupItemProps {
   group: ProductGroup;
@@ -49,16 +50,18 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
       >
         <div className="flex-1">
           <div className="flex items-center gap-2 sm:gap-3">
-            <h3 className="text-base sm:text-xl font-bold text-slate-800">{group.productName}</h3>
-            <span className="px-2 py-0.5 text-[11px] sm:text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md">
-                {group.category}
+            <h3 className="text-base sm:text-lg font-bold text-slate-800">
+                <Highlight text={group.productName} query={searchQuery} />
+            </h3>
+            <span className="px-2 py-0.5 text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md">
+                <Highlight text={group.category} query={searchQuery} />
             </span>
           </div>
           <div className="flex items-center gap-4 mt-1">
-            <p className="text-xs sm:text-sm font-medium text-slate-500">
+            <p className="text-sm font-medium text-slate-500">
                 Stock: <span className={availableQty > 0 ? 'text-green-600 font-bold' : 'text-rose-600 font-bold'}>{availableQty}</span> / {totalQty}
             </p>
-            <p className="text-sm sm:text-lg font-bold text-primary">
+            <p className="text-base sm:text-lg font-bold text-primary">
                 {formatCurrency(group.sellingPrice)}
             </p>
           </div>
@@ -73,7 +76,7 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
 
       {isExpanded && (
         <div className="bg-slate-50/50 border-t border-slate-100">
-          <div className="bg-slate-100/50 px-4 py-2 sm:py-3 text-[11px] font-black text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
+          <div className="bg-slate-100/50 px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
             <div>Identifier / Type</div>
             <div className="hidden md:block">Purchased</div>
             <div className="hidden md:block">Status</div>
@@ -86,6 +89,7 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
               purchaseOrders={purchaseOrders} 
               onEditProduct={onEditProduct}
               onDeleteProduct={onDeleteProduct}
+              searchQuery={searchQuery}
             />
           ))}
         </div>

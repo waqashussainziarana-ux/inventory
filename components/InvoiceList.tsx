@@ -1,10 +1,11 @@
+
 import React from 'react';
 import { Invoice, Product } from '../types';
 import InvoiceListItem from './InvoiceListItem';
 
 interface InvoiceListProps {
     invoices: Invoice[];
-    products: Product[]; // Pass all products to find details
+    products: Product[]; 
     searchQuery: string;
     onDownloadInvoice: (invoice: Invoice) => void;
 }
@@ -25,15 +26,17 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, products, searchQue
 
     if (filteredInvoices.length === 0) {
         let message = 'No invoices found.';
-        if(searchQuery) message = 'No invoices match your search query.';
+        if(searchQuery) message = `No invoices matching "${searchQuery}"`;
         else message = 'No invoices have been created yet.';
 
         return (
-            <div className="text-center py-12">
-                <h3 className="text-lg font-medium text-slate-700">{message}</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                    {searchQuery ? 'Try another search term.' : 'Click "Create Invoice" to start.'}
-                </p>
+            <div className="text-center py-20">
+                <h3 className="text-lg font-bold text-slate-700">{message}</h3>
+                {searchQuery && (
+                    <p className="text-sm text-slate-500 font-medium mt-2">
+                        Try searching for another invoice number or customer.
+                    </p>
+                )}
             </div>
         );
     }
@@ -46,6 +49,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, products, searchQue
                     invoice={invoice} 
                     allProducts={products}
                     onDownload={onDownloadInvoice}
+                    searchQuery={searchQuery}
                 />
             ))}
         </div>

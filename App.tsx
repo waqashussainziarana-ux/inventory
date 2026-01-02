@@ -158,9 +158,10 @@ const App: React.FC = () => {
 
   const handleAddCategory = async (name: string) => {
     try {
-      await api.categories.create(name);
+      const cat = await api.categories.create(name);
       syncAllData();
       setCategoryModalOpen(false);
+      return cat;
     } catch (err: any) { alert(err.message); }
   };
 
@@ -187,7 +188,7 @@ const App: React.FC = () => {
     if (syncError) return (
         <div className="flex flex-col items-center justify-center py-10 bg-rose-50 rounded-3xl border-2 border-rose-100 p-6 text-center">
             <div className="bg-rose-100 p-2 rounded-xl mb-3"><CloseIcon className="w-6 h-6 text-rose-600" /></div>
-            <p className="text-rose-600 font-black uppercase tracking-widest text-[11px] mb-1">Sync Failed</p>
+            <p className="text-rose-600 font-black uppercase tracking-widest text-xs mb-1">Sync Failed</p>
             <p className="text-slate-500 text-xs sm:text-sm max-w-xs mb-4">{syncError}</p>
             <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100 hover:bg-primary-hover transition-all">Retry</button>
         </div>
@@ -205,19 +206,19 @@ const App: React.FC = () => {
         case 'sold':
             return <ProductList products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} purchaseOrders={purchaseOrders} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} listType={activeTab} searchQuery={searchQuery} />;
         case 'products':
-            return <ProductManagementList products={products.filter(p => p.status !== ProductStatus.Archived)} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} />;
+            return <ProductManagementList products={products.filter(p => p.status !== ProductStatus.Archived)} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} searchQuery={searchQuery} />;
         case 'archive':
-            return <ArchivedProductList products={products.filter(p => p.status === ProductStatus.Archived)} onUnarchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Available})} onDeleteProduct={handleDeleteProduct} />;
+            return <ArchivedProductList products={products.filter(p => p.status === ProductStatus.Archived)} onUnarchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Available})} onDeleteProduct={handleDeleteProduct} searchQuery={searchQuery} />;
         case 'invoices':
             return <InvoiceList invoices={invoices} products={products} searchQuery={searchQuery} onDownloadInvoice={i => setDocumentToPrint({ type: 'invoice', data: i })} />;
         case 'purchaseOrders':
             return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={po => setDocumentToPrint({ type: 'po', data: po })} />;
         case 'customers':
-            return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => api.customers.delete(id).then(syncAllData)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} />;
+            return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => api.customers.delete(id).then(syncAllData)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} searchQuery={searchQuery} />;
         case 'suppliers':
-            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => api.suppliers.delete(id).then(syncAllData)} />;
+            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => api.suppliers.delete(id).then(syncAllData)} searchQuery={searchQuery} />;
         case 'categories':
-            return <CategoryManagement categories={categories} products={products} onAddCategory={handleAddCategory} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} />;
+            return <CategoryManagement categories={categories} products={products} onAddCategory={handleAddCategory} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} searchQuery={searchQuery} />;
         default:
              return <Dashboard products={products} invoices={invoices} />;
     }
@@ -268,14 +269,14 @@ const App: React.FC = () => {
                             type="search" 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            placeholder="IMEI SEARCH..." 
-                            className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-10 sm:pl-11 py-3 sm:py-3.5 text-sm sm:text-base lg:text-lg font-medium transition-all" 
+                            placeholder="Search by Product Name or IMEI..." 
+                            className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-10 sm:pl-11 py-3.5 sm:py-4 text-sm sm:text-base lg:text-lg font-medium transition-all" 
                         />
                     </div>
                     <div className="flex gap-2 sm:gap-3">
-                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-3 sm:py-3.5 text-xs lg:text-sm font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
-                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-3 sm:py-3.5 text-xs lg:text-sm font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
-                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-3 sm:py-3.5 text-xs lg:text-sm font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
+                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-3.5 sm:py-4 text-xs lg:text-sm font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
+                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-3.5 sm:py-4 text-xs lg:text-sm font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
+                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-3.5 sm:py-4 text-xs lg:text-sm font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
                     </div>
                 </div>
                 <Dashboard products={products} invoices={invoices} />
@@ -283,7 +284,7 @@ const App: React.FC = () => {
 
             <section className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50/50 p-2 sm:p-4">
-                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
+                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2 sm:gap-3">
                         {[
                           { id: 'active', label: 'Active' },
                           { id: 'sold', label: 'Sold' },
@@ -298,7 +299,7 @@ const App: React.FC = () => {
                             <button 
                               key={tab.id} 
                               onClick={() => setActiveTab(tab.id as any)} 
-                              className={`py-2.5 px-1 sm:px-4 sm:py-2.5 rounded-lg font-black text-[11px] sm:text-xs lg:text-sm uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                              className={`py-3 px-1 sm:px-4 sm:py-2.5 rounded-lg font-black text-xs sm:text-sm lg:text-base uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
                                 {tab.label}
                             </button>
@@ -310,7 +311,7 @@ const App: React.FC = () => {
         </main>
 
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
-            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={async (name) => { const cat = await api.categories.create(name); syncAllData(); return cat; }} />
+            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={handleAddCategory} />
         </Modal>
         <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
             {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => setEditModalOpen(false)} categories={categories} />}
@@ -319,7 +320,7 @@ const App: React.FC = () => {
             <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={async (name, phone) => { const cust = await api.customers.create({ name, phone }); syncAllData(); return cust; }} />
         </Modal>
         <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New Purchase Order">
-            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={handleAddSupplier} categories={categories} onAddCategory={async (name) => { const cat = await api.categories.create(name); syncAllData(); return cat; }} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
+            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={handleAddSupplier} categories={categories} onAddCategory={handleAddCategory} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
         </Modal>
         <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer Details">
             <CustomerForm customer={customerToEdit} onSave={handleAddCustomer} onClose={() => setCustomerModalOpen(false)} />
