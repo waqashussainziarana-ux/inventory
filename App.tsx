@@ -206,7 +206,16 @@ const App: React.FC = () => {
     switch(activeTab) {
         case 'active':
         case 'sold':
-            return <ProductList products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} purchaseOrders={purchaseOrders} onEditProduct={product => { setProductToEdit(product); setEditModalOpen(true); }} listType={activeTab} searchQuery={searchQuery} />;
+            return (
+              <ProductList 
+                products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} 
+                purchaseOrders={purchaseOrders} 
+                onEditProduct={product => { setProductToEdit(product); setEditModalOpen(true); }} 
+                onDeleteProduct={handleDeleteProduct}
+                listType={activeTab} 
+                searchQuery={searchQuery} 
+              />
+            );
         case 'products':
             return <ProductManagementList products={products.filter(p => p.status !== ProductStatus.Archived)} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} />;
         case 'archive':

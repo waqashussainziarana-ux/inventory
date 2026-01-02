@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Product, ProductGroup, ProductStatus, PurchaseOrder } from '../types';
 import ProductGroupItem from './ProductGroupItem';
@@ -6,6 +7,7 @@ interface ProductListProps {
   products: Product[];
   purchaseOrders: PurchaseOrder[];
   onEditProduct: (product: Product) => void;
+  onDeleteProduct: (productId: string) => void;
   listType: 'active' | 'sold' | 'search';
   searchQuery: string;
 }
@@ -13,7 +15,7 @@ interface ProductListProps {
 const getProductGroupKey = (p: Product) => 
   `${p.productName.toLowerCase().trim()}|${p.category.toLowerCase().trim()}|${p.purchasePrice}|${p.sellingPrice}|${p.trackingType}`;
 
-const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onEditProduct, listType, searchQuery }) => {
+const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onEditProduct, onDeleteProduct, listType, searchQuery }) => {
   const activeProducts = products.filter(p => p.status !== ProductStatus.Archived);
 
   const groupedProducts = React.useMemo(() => {
@@ -64,6 +66,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onE
             group={group} 
             purchaseOrders={purchaseOrders}
             onEditProduct={onEditProduct}
+            onDeleteProduct={onDeleteProduct}
             searchQuery={searchQuery}
         />
       ))}
