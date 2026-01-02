@@ -11,7 +11,7 @@ function getDbConnection() {
     if (!sql) {
         const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
         if (!connectionString) {
-            throw new Error('DATABASE_URL or POSTGRES_URL is not configured in Vercel environment variables.');
+            throw new Error('DATABASE_URL or POSTGRES_URL is not configured in Vercel environment variables. Please check your Vercel project settings.');
         }
         sql = postgres(connectionString, {
             ssl: 'require',
@@ -32,37 +32,39 @@ function getUserId(req: VercelRequest): string | null {
 function handleError(res: VercelResponse, error: any, resourceName: string) {
     console.error(`[API ERROR] Resource: ${resourceName} | Message: ${error.message}`);
     return res.status(500).json({ 
-        error: `Error in ${resourceName}`, 
+        error: `Database Error in ${resourceName}`, 
         details: error.message,
         code: error.code
     });
 }
 
 async function ensureTables(db: postgres.Sql) {
-    // Check if the users table exists as a proxy for system state
-    const tableExists = await db`
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_name = 'users'
-        );
-    `;
+    try {
+        const tableExists = await db`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'users'
+            );
+        `;
 
-    if (!tableExists[0].exists) {
-        console.log("Initializing database tables...");
-        await db.begin(async (sql) => {
-            await sql`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
-            await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
-            await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
-            await sql`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
-            await sql`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`;
-            await sql`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
-            await sql`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
-            await sql`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
-        });
+        if (!tableExists[0].exists) {
+            console.log("Initializing database tables...");
+            await db.begin(async (sql) => {
+                await sql`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
+                await sql`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
+                await sql`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
+                await sql`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
+                await sql`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`;
+                await sql`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
+                await sql`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
+                await sql`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
+            });
+        }
+    } catch (e) {
+        console.error("Critical error in ensureTables:", e);
     }
 }
 
-// --- RESOURCE HANDLERS ---
 async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db: postgres.Sql, userId: string, tableName: string) {
     try {
         const table = db(tableName);
@@ -71,27 +73,15 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
             return res.status(200).json(rows);
         }
         if (req.method === 'POST') {
-            const { name, ...rest } = req.body;
             const id = randomUUID();
-            const columns = Object.keys(rest);
-            const values = Object.values(rest);
+            const dataToInsert = { ...req.body, id, userId };
             
-            let result;
-            if (columns.length > 0) {
-                result = await db`
-                    INSERT INTO ${table} (id, "userId", name, ${db(columns)})
-                    VALUES (${id}, ${userId}, ${name}, ${values})
-                    ON CONFLICT (name, "userId") DO UPDATE SET name = EXCLUDED.name
-                    RETURNING *;
-                `;
-            } else {
-                result = await db`
-                    INSERT INTO ${table} (id, "userId", name)
-                    VALUES (${id}, ${userId}, ${name})
-                    ON CONFLICT (name, "userId") DO UPDATE SET name = EXCLUDED.name
-                    RETURNING *;
-                `;
-            }
+            // Using the postgres object insertion helper: sql`INSERT INTO table ${ sql(data) }`
+            const result = await db`
+                INSERT INTO ${table} ${db(dataToInsert)}
+                ON CONFLICT (name, "userId") DO UPDATE SET name = EXCLUDED.name
+                RETURNING *;
+            `;
             return res.status(200).json(result[0]);
         }
         if (req.method === 'DELETE') {
@@ -103,18 +93,11 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = getDbConnection();
-    
-    // Auto-setup missing tables
-    try {
-        await ensureTables(db);
-    } catch (e) {
-        return handleError(res, e, 'initialization');
-    }
+    await ensureTables(db);
 
     const path = req.url?.split('/') || [];
     const resource = path[2];
 
-    // Auth is special - doesn't need session header
     if (resource === 'auth') {
         const endpoint = path[3];
         try {
@@ -143,9 +126,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
     }
 
-    // Check session for other resources
     const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+    if (!userId) return res.status(401).json({ error: 'Session expired. Please log in again.' });
 
     switch (resource) {
         case 'categories':
@@ -205,11 +187,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     for (const batch of productsData) {
                         const { productInfo, details } = batch;
                         const qty = details.trackingType === 'imei' ? details.imeis.length : details.quantity;
-                        const items = details.trackingType === 'imei' 
+                        const itemsToAdd = details.trackingType === 'imei' 
                             ? details.imeis.map((imei: string) => ({ ...productInfo, imei, trackingType: 'imei', quantity: 1 }))
                             : [{ ...productInfo, trackingType: 'quantity', quantity: qty }];
 
-                        for (const p of items) {
+                        for (const p of itemsToAdd) {
                             await sql`INSERT INTO products (id, "userId", "productName", category, "purchaseDate", "purchasePrice", "sellingPrice", status, "purchaseOrderId", "trackingType", imei, quantity)
                                       VALUES (${randomUUID()}, ${userId}, ${p.productName}, ${p.category}, ${p.purchaseDate}, ${p.purchasePrice}, ${p.sellingPrice}, 'Available', ${newPoId}, ${p.trackingType}, ${p.imei || null}, ${p.quantity})`;
                         }
@@ -220,12 +202,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             break;
             
         case 'generate-insights':
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Business context: ${JSON.stringify(req.body.products.slice(0, 20))}. Give 3 strategic tips.`;
-            const result = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-            return res.status(200).json({ insights: result.text });
+            try {
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const dataStr = JSON.stringify({ products: req.body.products.slice(0, 30), invoices: req.body.invoices.slice(0, 10) });
+                const prompt = `Analyze inventory and sales data for a business tracking IMEIs. Products: ${dataStr}. Provide 3 strategic tips for stock levels and pricing. Use professional Markdown.`;
+                const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
+                return res.status(200).json({ insights: response.text });
+            } catch (aiErr: any) {
+                return res.status(500).json({ error: "AI Insight generation failed", details: aiErr.message });
+            }
 
         default:
-            return res.status(404).json({ error: 'Not found' });
+            return res.status(404).json({ error: 'Endpoint not found' });
     }
 }

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Product, ProductStatus, NewProductInfo, Invoice, InvoiceItem, PurchaseOrder, Customer, Category, Supplier, PurchaseOrderStatus, User } from './types';
+import { Product, ProductStatus, NewProductInfo, Invoice, PurchaseOrder, Customer, Category, Supplier, User } from './types';
 import Dashboard from './components/Dashboard';
 import ProductList from './components/ProductList';
 import ProductManagementList from './components/ProductManagementList';
@@ -21,9 +21,8 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AIInsights from './components/AIInsights';
 import AuthScreen from './components/AuthScreen';
-import { supabase } from './lib/supabase';
-// Fix: Added CloseIcon to the imports to resolve "Cannot find name 'CloseIcon'" error
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, BuildingStorefrontIcon, LogoutIcon, CloseIcon } from './components/icons';
+import { api } from './lib/api';
+import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
@@ -54,41 +53,13 @@ const App: React.FC = () => {
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
 
-  // --- Auth & Sync ---
+  // --- Session Management ---
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setCurrentUser({
-            id: session.user.id,
-            email: session.user.email!,
-            name: session.user.user_metadata?.full_name,
-          });
-        }
-      } catch (err) {
-        console.error("Session check error:", err);
-      } finally {
-        // Add a slight delay for better transition feel
-        setTimeout(() => setIsAuthChecking(false), 500);
-      }
-    };
-
-    checkSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser({
-          id: session.user.id,
-          email: session.user.email!,
-          name: session.user.user_metadata?.full_name,
-        });
-      } else {
-        setCurrentUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    const savedUser = localStorage.getItem('inventory_user_data');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+    }
+    setIsAuthChecking(false);
   }, []);
 
   const syncAllData = useCallback(async () => {
@@ -96,20 +67,20 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const [p, c, cat, inv, po, sup] = await Promise.all([
-        supabase.from('products').select('*').order('purchaseDate', { ascending: false }),
-        supabase.from('customers').select('*').order('name'),
-        supabase.from('categories').select('*').order('name'),
-        supabase.from('invoices').select('*, invoice_items(*)').order('issueDate', { ascending: false }),
-        supabase.from('purchase_orders').select('*').order('issueDate', { ascending: false }),
-        supabase.from('suppliers').select('*').order('name')
+        api.products.list(),
+        api.customers.list(),
+        api.categories.list(),
+        api.invoices.list(),
+        api.purchaseOrders.list(),
+        api.suppliers.list()
       ]);
 
-      if (p.data) setProducts(p.data);
-      if (c.data) setCustomers(c.data);
-      if (cat.data) setCategories(cat.data);
-      if (inv.data) setInvoices(inv.data.map(i => ({ ...i, items: i.invoice_items })));
-      if (po.data) setPurchaseOrders(po.data);
-      if (sup.data) setSuppliers(sup.data);
+      setProducts(p);
+      setCustomers(c);
+      setCategories(cat);
+      setInvoices(inv);
+      setPurchaseOrders(po);
+      setSuppliers(sup);
     } catch (e) {
       console.error("Sync error", e);
     } finally {
@@ -121,8 +92,9 @@ const App: React.FC = () => {
     if (currentUser) syncAllData();
   }, [currentUser, syncAllData]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    localStorage.removeItem('inventory_user_id');
+    localStorage.removeItem('inventory_user_data');
     setCurrentUser(null);
     setProducts([]);
     setInvoices([]);
@@ -133,96 +105,49 @@ const App: React.FC = () => {
   };
 
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
-    const productsToAdd = details.trackingType === 'imei' 
-      ? details.imeis.map((imei: string) => ({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available, userId: currentUser?.id }))
-      : [{ ...productData, trackingType: 'quantity', quantity: details.quantity, status: ProductStatus.Available, userId: currentUser?.id }];
-
-    const { data, error } = await supabase.from('products').insert(productsToAdd).select();
-    if (error) {
-        alert(error.message);
-        return null;
-    }
-    syncAllData();
-    return data;
+    try {
+      if (details.trackingType === 'imei') {
+         for (const imei of details.imeis) {
+            await api.products.create({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available });
+         }
+      } else {
+         await api.products.create({ ...productData, trackingType: 'quantity', quantity: details.quantity, status: ProductStatus.Available });
+      }
+      syncAllData();
+    } catch (err: any) { alert(err.message); }
   };
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
-    const { error } = await supabase.from('products').update(updatedProduct).eq('id', updatedProduct.id);
-    if (error) alert(error.message);
-    else syncAllData();
-    setEditModalOpen(false);
-    setProductToEdit(null);
+    try {
+      await api.products.update(updatedProduct);
+      syncAllData();
+      setEditModalOpen(false);
+      setProductToEdit(null);
+    } catch (err: any) { alert(err.message); }
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    if (!confirm('Permanently delete this product?')) return;
-    const { error } = await supabase.from('products').delete().eq('id', productId);
-    if (error) alert(error.message);
-    else syncAllData();
-  };
-
-  const handleDeleteResource = async (table: string, id: string) => {
-    if (!confirm(`Permanently delete this ${table.slice(0, -1)}?`)) return;
-    const { error } = await supabase.from(table).delete().eq('id', id);
-    if (error) alert(error.message);
-    else syncAllData();
+    if (!confirm('Permanently delete this item?')) return;
+    try {
+      await api.products.delete(productId);
+      syncAllData();
+    } catch (err: any) { alert(err.message); }
   };
 
   const handleCreateInvoice = async (customerId: string, items: any[]) => {
-    const customer = customers.find(c => c.id === customerId);
-    const total = items.reduce((sum, it) => sum + it.sellingPrice * it.quantity, 0);
-    
-    const { data: invoice, error: invError } = await supabase.from('invoices').insert({
-      userId: currentUser?.id,
-      invoiceNumber: `INV-${Date.now()}`,
-      customerId,
-      customerName: customer?.name || 'Customer',
-      totalAmount: total,
-      issueDate: new Date().toISOString()
-    }).select().single();
-
-    if (invError) return alert(invError.message);
-
-    const itemsToAdd = items.map(it => ({
-      invoiceId: invoice.id,
-      productId: it.productId,
-      productName: it.productName || 'Product',
-      imei: it.imei || null,
-      quantity: it.quantity,
-      sellingPrice: it.sellingPrice
-    }));
-
-    await supabase.from('invoice_items').insert(itemsToAdd);
-    
-    for (const it of items) {
-        await supabase.from('products').update({ 
-            status: ProductStatus.Sold, 
-            invoiceId: invoice.id, 
-            customerName: customer?.name 
-        }).eq('id', it.productId);
-    }
-
-    syncAllData();
-    setInvoiceModalOpen(false);
-    handleDownloadInvoice({ ...invoice, items: itemsToAdd });
+    try {
+      await api.invoices.create({ customerId, items });
+      syncAllData();
+      setInvoiceModalOpen(false);
+    } catch (err: any) { alert(err.message); }
   };
 
   const handleCreatePurchaseOrder = async (poDetails: any, productsData: any) => {
-      const { data: po, error } = await supabase.from('purchase_orders').insert({
-          ...poDetails,
-          userId: currentUser?.id,
-          issueDate: new Date().toISOString()
-      }).select().single();
-
-      if (error) return alert(error.message);
-
-      for (const batch of productsData) {
-          await handleAddProducts(batch.productInfo, { ...batch.details, purchaseOrderId: po.id });
-      }
-
+    try {
+      await api.purchaseOrders.create({ poDetails: { ...poDetails, totalCost: 0 }, productsData });
       syncAllData();
       setPurchaseOrderModalOpen(false);
-      handleDownloadPurchaseOrder(po);
+    } catch (err: any) { alert(err.message); }
   };
 
   const existingImeis = useMemo(() => new Set(products.map(p => p.imei).filter(Boolean)), [products]);
@@ -236,16 +161,7 @@ const App: React.FC = () => {
     switch(activeTab) {
         case 'active':
         case 'sold':
-            return (
-              <ProductList 
-                products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} 
-                purchaseOrders={purchaseOrders} 
-                onEditProduct={product => { setProductToEdit(product); setEditModalOpen(true); }} 
-                onDeleteProduct={handleDeleteProduct}
-                listType={activeTab} 
-                searchQuery={searchQuery} 
-              />
-            );
+            return <ProductList products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} purchaseOrders={purchaseOrders} onEditProduct={product => { setProductToEdit(product); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} listType={activeTab} searchQuery={searchQuery} />;
         case 'products':
             return <ProductManagementList products={products.filter(p => p.status !== ProductStatus.Archived)} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} />;
         case 'archive':
@@ -255,44 +171,17 @@ const App: React.FC = () => {
         case 'purchaseOrders':
             return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={handleDownloadPurchaseOrder} />;
         case 'customers':
-            return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => handleDeleteResource('customers', id)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} />;
+            return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => api.customers.delete(id).then(syncAllData)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} />;
         case 'suppliers':
-            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => handleDeleteResource('suppliers', id)} />;
+            return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => api.suppliers.delete(id).then(syncAllData)} />;
         case 'categories':
-            return (
-                <div className="space-y-4">
-                    <CategoryManagement 
-                        categories={categories} 
-                        products={products} 
-                        onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} 
-                        onDeleteCategory={id => handleDeleteResource('categories', id)} 
-                    />
-                </div>
-            );
+            return <CategoryManagement categories={categories} products={products} onAddCategory={name => api.categories.create(name).then(syncAllData)} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} />;
         default:
              return <Dashboard products={products} invoices={invoices} />;
     }
   };
 
-  if (isAuthChecking) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="bg-primary p-4 rounded-[1.5rem] shadow-xl shadow-indigo-100 mb-6 animate-bounce">
-            <BuildingStorefrontIcon className="w-10 h-10 text-white" />
-        </div>
-        <div className="w-12 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-            <div className="w-full h-full bg-primary animate-[loading_1.5s_infinite]"></div>
-        </div>
-        <style>{`
-            @keyframes loading {
-                0% { transform: translateX(-100%); }
-                100% { transform: translateX(100%); }
-            }
-        `}</style>
-      </div>
-    );
-  }
-
+  if (isAuthChecking) return null;
   if (!currentUser) return <AuthScreen onAuthSuccess={(u) => setCurrentUser(u)} />;
 
   if (documentToPrint) {
@@ -302,10 +191,8 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
         <div className="sticky top-0 p-4 bg-slate-900 flex justify-between items-center z-50">
-          <span className="text-white font-bold text-sm">Preview Document</span>
-          <button onClick={() => setDocumentToPrint(null)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors">
-            <CloseIcon className="w-6 h-6" />
-          </button>
+          <span className="text-white font-bold text-sm">Preview</span>
+          <button onClick={() => setDocumentToPrint(null)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
         </div>
         <div className="flex justify-center p-8 bg-slate-100 min-h-screen">
           <div className="shadow-2xl">{documentComponent}</div>
@@ -315,25 +202,17 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sans antialiased text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
         <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-slate-200">
             <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex h-16 items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="bg-primary p-2 rounded-xl shadow-indigo-200 shadow-lg">
-                           <BuildingStorefrontIcon className="w-6 h-6 text-white" />
-                        </div>
-                        <span className="text-xl font-extrabold tracking-tight text-slate-800">Inventory<span className="text-primary">Track</span></span>
+                        <div className="bg-primary p-2 rounded-xl"><BuildingStorefrontIcon className="w-6 h-6 text-white" /></div>
+                        <span className="text-xl font-extrabold tracking-tight">Inventory<span className="text-primary">Track</span></span>
                     </div>
-
                     <div className="flex items-center gap-4">
-                        <div className="text-right hidden sm:block">
-                            <p className="text-xs font-bold text-slate-900">{currentUser.name || currentUser.email}</p>
-                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Workspace Member</p>
-                        </div>
-                        <button onClick={handleLogout} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all" title="Log Out">
-                            <LogoutIcon className="w-5 h-5" />
-                        </button>
+                        <span className="text-xs font-bold text-slate-600 hidden sm:block">{currentUser.name || currentUser.email}</span>
+                        <button onClick={handleLogout} className="p-2.5 text-slate-400 hover:text-rose-500 transition-all"><LogoutIcon className="w-5 h-5" /></button>
                     </div>
                 </div>
             </div>
@@ -344,72 +223,53 @@ const App: React.FC = () => {
                 <div className="lg:col-span-8 space-y-8">
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="relative group">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                                    <SearchIcon className="h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors" />
-                                </div>
-                                <input 
-                                  type="search" 
-                                  value={searchQuery} 
-                                  onChange={(e) => setSearchQuery(e.target.value)} 
-                                  placeholder="Quick search products..." 
-                                  className="block w-full bg-slate-50 rounded-2xl border-transparent focus:border-primary focus:ring-4 focus:ring-primary/10 pl-11 py-3.5 text-sm font-medium transition-all"
-                                />
+                            <div className="relative">
+                                <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                                <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Quick search..." className="block w-full bg-slate-50 rounded-2xl border-transparent focus:border-primary pl-11 py-3.5 text-sm font-medium transition-all" />
                             </div>
                             <div className="flex items-center gap-2">
-                                <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl hover:bg-rose-100 transition-all active:scale-95">
-                                    PO
-                                </button>
-                                <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-2xl hover:bg-emerald-100 transition-all active:scale-95">
-                                    Sell
-                                </button>
-                                <button onClick={() => setAddProductModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-white bg-primary rounded-2xl shadow-lg shadow-indigo-100 hover:bg-primary-hover hover:-translate-y-0.5 transition-all active:scale-95">
-                                    + Stock
-                                </button>
+                                <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl hover:bg-rose-100 transition-all">PO</button>
+                                <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-2xl hover:bg-emerald-100 transition-all">Sell</button>
+                                <button onClick={() => setAddProductModalOpen(true)} className="flex-1 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-white bg-primary rounded-2xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
                             </div>
                         </div>
                     </div>
                     <Dashboard products={products} invoices={invoices} />
                 </div>
-                <div className="lg:col-span-4">
-                    <AIInsights products={products} invoices={invoices} />
-                </div>
+                <div className="lg:col-span-4"><AIInsights products={products} invoices={invoices} /></div>
             </section>
 
             <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-200 bg-slate-50/30 px-6 overflow-x-auto no-scrollbar">
                     <nav className="-mb-px flex gap-x-8">
                         {['active', 'sold', 'products', 'archive', 'invoices', 'purchaseOrders', 'customers', 'suppliers', 'categories'].map(tab => (
-                            <button key={tab} onClick={() => setActiveTab(tab as any)} className={`whitespace-nowrap py-5 px-1 border-b-2 font-black text-[10px] uppercase tracking-widest transition-all relative ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                            <button key={tab} onClick={() => setActiveTab(tab as any)} className={`whitespace-nowrap py-5 px-1 border-b-2 font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
                                 {tab}
                             </button>
                         ))}
                     </nav>
                 </div>
-                <div className="p-8 min-h-[500px]">
-                    {renderContent()}
-                </div>
+                <div className="p-8 min-h-[500px]">{renderContent()}</div>
             </section>
         </main>
 
-        {/* Modals */}
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
-            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} />
+            <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => api.categories.create(name).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
             {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => setEditModalOpen(false)} categories={categories} />}
         </Modal>
         <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Sales Invoice">
-            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => supabase.from('customers').insert({ name, phone, userId: currentUser?.id }).then(syncAllData)} />
+            <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => api.customers.create({ name, phone }).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New Purchase Order">
-            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => supabase.from('suppliers').insert({ ...s, userId: currentUser?.id }).then(syncAllData)} categories={categories} onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
+            <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => api.suppliers.create(s).then(syncAllData)} categories={categories} onAddCategory={name => api.categories.create(name).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
         </Modal>
         <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer Details">
-            <CustomerForm customer={customerToEdit} onSave={c => supabase.from('customers').upsert({ ...c, id: customerToEdit?.id, userId: currentUser?.id }).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />
+            <CustomerForm customer={customerToEdit} onSave={c => api.customers.create(c).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />
         </Modal>
         <Modal isOpen={isSupplierModalOpen} onClose={() => setSupplierModalOpen(false)} title="Supplier Details">
-            <SupplierForm supplier={supplierToEdit} onSave={s => supabase.from('suppliers').upsert({ ...s, id: supplierToEdit?.id, userId: currentUser?.id }).then(syncAllData)} onClose={() => setSupplierModalOpen(false)} />
+            <SupplierForm supplier={supplierToEdit} onSave={s => api.suppliers.create(s).then(syncAllData)} onClose={() => setSupplierModalOpen(false)} />
         </Modal>
     </div>
   );
