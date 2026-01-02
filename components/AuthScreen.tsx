@@ -15,11 +15,13 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setSuccessMsg(null);
 
     try {
       if (isLogin) {
@@ -27,7 +29,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           email,
           password,
         });
-        if (error) throw error;
+        
+        if (error) {
+          // Specific handling for common Supabase errors
+          if (error.message.includes('Email not confirmed')) {
+            throw new Error('Please check your email and confirm your account before logging in.');
+          }
+          throw error;
+        }
+
         if (data.user) {
           onAuthSuccess({
             id: data.user.id,
@@ -45,14 +55,18 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             },
           },
         });
+        
         if (error) throw error;
+        
         if (data.user) {
-            alert("Account created! Please check your email for verification if enabled, or sign in now.");
+            setSuccessMsg("Account created! Check your email for a confirmation link (this is required by Supabase default settings).");
             setIsLogin(true);
+            setPassword(''); // Clear password for security
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      console.error('Auth error:', err);
+      setError(err.message || 'Authentication failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -66,19 +80,19 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             <BuildingStorefrontIcon className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight">Inventory<span className="text-primary">Track</span></h1>
-          <p className="text-slate-500 font-medium mt-2">Powered by Supabase</p>
+          <p className="text-slate-500 font-medium mt-2">Inventory management powered by Supabase</p>
         </div>
 
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/60 p-8 sm:p-10 border border-slate-200">
           <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8">
             <button 
-              onClick={() => setIsLogin(true)}
+              onClick={() => { setIsLogin(true); setError(null); setSuccessMsg(null); }}
               className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${isLogin ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Sign In
             </button>
             <button 
-              onClick={() => setIsLogin(false)}
+              onClick={() => { setIsLogin(false); setError(null); setSuccessMsg(null); }}
               className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${!isLogin ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Sign Up
@@ -115,16 +129,23 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               <input 
                 type="password" 
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-slate-50 border-transparent rounded-2xl focus:border-primary focus:ring-4 focus:ring-primary/10 py-3.5 px-4 text-sm font-medium transition-all"
-                placeholder="••••••••"
+                placeholder="Min. 6 characters"
               />
             </div>
 
             {error && (
               <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
                 <p className="text-red-600 text-xs font-bold text-center leading-tight">{error}</p>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
+                <p className="text-green-600 text-xs font-bold text-center leading-tight">{successMsg}</p>
               </div>
             )}
 
@@ -136,6 +157,12 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               {isLoading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
             </button>
           </form>
+
+          <div className="mt-8 text-center">
+            <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">
+              Note: Email verification is usually required by Supabase.
+            </p>
+          </div>
         </div>
       </div>
     </div>

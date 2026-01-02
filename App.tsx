@@ -55,16 +55,25 @@ const App: React.FC = () => {
 
   // --- Auth & Sync ---
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser({
-          id: session.user.id,
-          email: session.user.email!,
-          name: session.user.user_metadata?.full_name,
-        });
+    // Initial session check
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setCurrentUser({
+            id: session.user.id,
+            email: session.user.email!,
+            name: session.user.user_metadata?.full_name,
+          });
+        }
+      } catch (err) {
+        console.error("Session check error:", err);
+      } finally {
+        setIsAuthChecking(false);
       }
-      setIsAuthChecking(false);
-    });
+    };
+
+    checkSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
@@ -200,7 +209,6 @@ const App: React.FC = () => {
   };
 
   const handleCreatePurchaseOrder = async (poDetails: any, productsData: any) => {
-      // Simplified PO creation for Supabase
       const { data: po, error } = await supabase.from('purchase_orders').insert({
           ...poDetails,
           userId: currentUser?.id,
@@ -209,7 +217,6 @@ const App: React.FC = () => {
 
       if (error) return alert(error.message);
 
-      // Add actual products to stock from PO
       for (const batch of productsData) {
           await handleAddProducts(batch.productInfo, { ...batch.details, purchaseOrderId: po.id });
       }
