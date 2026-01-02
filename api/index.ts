@@ -11,13 +11,13 @@ function getDbConnection() {
     if (!sql) {
         const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
         if (!connectionString) {
-            throw new Error('CRITICAL: DATABASE_URL environment variable is missing. Please add your Supabase/Postgres connection string to your Vercel project settings.');
+            throw new Error('DATABASE_URL is not configured. Please add your connection string to Vercel environment variables.');
         }
         sql = postgres(connectionString, {
             ssl: 'require',
             max: 10,
             idle_timeout: 5,
-            connect_timeout: 20, // Increased for stability
+            connect_timeout: 15,
             prepare: false,
         });
     }
@@ -30,41 +30,44 @@ function getUserId(req: VercelRequest): string | null {
 }
 
 function handleError(res: VercelResponse, error: any, resourceName: string) {
-    console.error(`[API ERROR] Resource: ${resourceName} | Message: ${error.message}`);
+    console.error(`[API ERROR] ${resourceName}:`, error.message);
+    // CRITICAL: Always return JSON, never HTML, to prevent frontend "Unexpected token <" errors
     return res.status(500).json({ 
-        error: `Database error in ${resourceName}`, 
+        error: `Backend Error: ${resourceName}`, 
         details: error.message,
-        code: error.code || 'DB_ERROR'
+        code: error.code || 'UNKNOWN_ERROR'
     });
 }
 
 const sanitize = (row: any) => {
     if (!row) return row;
     const result = { ...row };
-    // Postgres NUMERIC returns as string, JS needs numbers for calculations
+    // Postgres returns NUMERIC as string, convert to Number for JS
     const numericFields = ['purchasePrice', 'sellingPrice', 'totalAmount', 'totalCost', 'quantity'];
     numericFields.forEach(field => {
         if (result[field] !== undefined && result[field] !== null) {
             result[field] = Number(result[field]);
         }
     });
+    // Map database snake_case or quoted columns to camelCase if needed, 
+    // but here we use quoted names in SQL to match the types exactly.
     return result;
 };
 
 async function ensureTables(db: postgres.Sql) {
-    // Attempt creation individually to avoid transaction aborts on "already exists" errors
-    const createTable = async (query: postgres.PendingQuery<any>) => {
-        try { await query; } catch (e) { /* Table likely exists */ }
-    };
-
-    await createTable(db`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`);
-    await createTable(db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`);
+    try {
+        // Run creation queries individually to avoid transaction failures if one table already exists
+        await db`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password TEXT NOT NULL, name VARCHAR(255));`;
+        await db`CREATE TABLE IF NOT EXISTS suppliers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(50), UNIQUE(name, "userId"));`;
+        await db`CREATE TABLE IF NOT EXISTS customers (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, UNIQUE(name, "userId"));`;
+        await db`CREATE TABLE IF NOT EXISTS categories (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), name VARCHAR(255) NOT NULL, UNIQUE(name, "userId"));`;
+        await db`CREATE TABLE IF NOT EXISTS invoices (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "invoiceNumber" VARCHAR(255) NOT NULL, "customerId" UUID REFERENCES customers(id), "customerName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalAmount" NUMERIC(10, 2) NOT NULL);`;
+        await db`CREATE TABLE IF NOT EXISTS invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID REFERENCES invoices(id) ON DELETE CASCADE, "productId" UUID, "productName" VARCHAR(255) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL);`;
+        await db`CREATE TABLE IF NOT EXISTS purchase_orders (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "poNumber" VARCHAR(255) NOT NULL, "supplierId" UUID REFERENCES suppliers(id), "supplierName" VARCHAR(255), "issueDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(), "totalCost" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT);`;
+        await db`CREATE TABLE IF NOT EXISTS products (id UUID PRIMARY KEY, "userId" UUID REFERENCES users(id), "productName" VARCHAR(255) NOT NULL, category VARCHAR(255), "purchaseDate" DATE NOT NULL, "purchasePrice" NUMERIC(10, 2) NOT NULL, "sellingPrice" NUMERIC(10, 2) NOT NULL, status VARCHAR(50) NOT NULL, notes TEXT, "invoiceId" UUID, "purchaseOrderId" UUID, "trackingType" VARCHAR(50) NOT NULL, imei VARCHAR(255), quantity INTEGER NOT NULL, "customerName" VARCHAR(255));`;
+    } catch (e) {
+        console.warn("Table check/creation skipped or failed (likely already exists).");
+    }
 }
 
 async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db: postgres.Sql, userId: string, tableName: string) {
@@ -75,6 +78,7 @@ async function handleSimpleResource(req: VercelRequest, res: VercelResponse, db:
         }
         if (req.method === 'POST') {
             const id = randomUUID();
+            // Crucial: Use keys that match DB columns exactly
             const dataToInsert = { ...req.body, id, "userId": userId };
             const result = await db`
                 INSERT INTO ${db(tableName)} ${db(dataToInsert)}
@@ -95,11 +99,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const db = getDbConnection();
         await ensureTables(db);
 
-        const path = req.url?.split('/') || [];
-        const resource = path[2];
+        // Normalize URL to extract resource
+        const url = req.url || '';
+        const parts = url.replace('/api/', '').split('/');
+        const resource = parts[0];
 
         if (resource === 'auth') {
-            const endpoint = path[3];
+            const endpoint = parts[1];
             if (endpoint === 'signup') {
                 const { email, password, name } = req.body;
                 const result = await db`INSERT INTO users (id, email, password, name) VALUES (${randomUUID()}, ${email}, ${password}, ${name}) RETURNING id, email, name;`;
@@ -108,13 +114,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (endpoint === 'login') {
                 const { email, password } = req.body;
                 const result = await db`SELECT id, email, name FROM users WHERE email = ${email} AND password = ${password}`;
-                if (result.length === 0) return res.status(401).json({ error: 'Invalid credentials.' });
+                if (result.length === 0) return res.status(401).json({ error: 'Invalid email or password.' });
                 return res.status(200).json({ user: sanitize(result[0]) });
             }
         }
 
         const userId = getUserId(req);
-        if (!userId) return res.status(401).json({ error: 'Unauthorized.' });
+        if (!userId) return res.status(401).json({ error: 'Unauthorized: No User ID provided in headers.' });
 
         switch (resource) {
             case 'categories':
@@ -193,17 +199,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             case 'generate-insights':
                 try {
                     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 15))}. Give 3 specific tips for growth.`;
+                    const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 15))}. Suggest 3 business strategies.`;
                     const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
                     return res.status(200).json({ insights: response.text });
-                } catch (aiErr: any) {
-                    return res.status(500).json({ error: "Insight failed", details: aiErr.message });
+                } catch (e: any) {
+                    return res.status(500).json({ error: "AI Insight Failed", details: e.message });
                 }
 
             default:
-                return res.status(404).json({ error: 'Not found' });
+                return res.status(404).json({ error: `Resource '${resource}' not found` });
         }
     } catch (e: any) {
-        return handleError(res, e, 'global');
+        return handleError(res, e, 'global_handler');
     }
 }
