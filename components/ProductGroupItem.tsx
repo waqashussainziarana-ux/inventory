@@ -50,7 +50,7 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
         <div className="flex-1">
           <div className="flex items-center gap-2 sm:gap-3">
             <h3 className="text-base sm:text-xl font-bold text-slate-800">{group.productName}</h3>
-            <span className="px-2 py-0.5 text-[9px] sm:text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md">
+            <span className="px-2 py-0.5 text-[11px] sm:text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 rounded-md">
                 {group.category}
             </span>
           </div>
@@ -73,7 +73,7 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
 
       {isExpanded && (
         <div className="bg-slate-50/50 border-t border-slate-100">
-          <div className="bg-slate-100/50 px-4 py-2 sm:py-3 text-[9px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
+          <div className="bg-slate-100/50 px-4 py-2 sm:py-3 text-[11px] font-black text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
             <div>Identifier / Type</div>
             <div className="hidden md:block">Purchased</div>
             <div className="hidden md:block">Status</div>

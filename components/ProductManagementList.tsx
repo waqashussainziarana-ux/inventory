@@ -125,42 +125,42 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                     <div key={product.id} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm space-y-3">
                         <div className="flex justify-between items-start">
                             <div>
-                                <h4 className="font-bold text-slate-900 leading-tight">{product.productName}</h4>
-                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{product.category}</span>
+                                <h4 className="font-bold text-slate-900 leading-tight text-sm">{product.productName}</h4>
+                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">{product.category}</span>
                             </div>
-                            <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                            <span className={`px-2 py-0.5 text-[11px] font-black uppercase tracking-wider rounded-md ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                                 {product.status}
                             </span>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-2 py-2 border-y border-slate-50">
+                        <div className="grid grid-cols-2 gap-2 py-3 border-y border-slate-50">
                             <div>
-                                <p className="text-[8px] font-black text-slate-400 uppercase">Cost</p>
-                                <p className="text-xs font-medium text-slate-600">{formatCurrency(product.purchasePrice)}</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase">Cost</p>
+                                <p className="text-sm font-medium text-slate-600">{formatCurrency(product.purchasePrice)}</p>
                             </div>
                             <div>
-                                <p className="text-[8px] font-black text-slate-400 uppercase">Price</p>
-                                <p className="text-xs font-bold text-primary">{formatCurrency(product.sellingPrice)}</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase">Price</p>
+                                <p className="text-sm font-bold text-primary">{formatCurrency(product.sellingPrice)}</p>
                             </div>
                             {product.imei && (
                                 <div className="col-span-2">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase">IMEI</p>
-                                    <p className="text-[10px] font-mono text-slate-500">{product.imei}</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase">IMEI</p>
+                                    <p className="text-sm font-mono text-slate-500 break-all">{product.imei}</p>
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex justify-end gap-4 pt-1">
-                            <button onClick={() => onArchiveProduct(product.id)} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <ArchiveBoxIcon className="w-3.5 h-3.5" />
+                        <div className="flex justify-end gap-5 pt-1">
+                            <button onClick={() => onArchiveProduct(product.id)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-slate-400">
+                                <ArchiveBoxIcon className="w-4 h-4" />
                                 Archive
                             </button>
-                            <button onClick={() => onEditProduct(product)} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-primary">
-                                <PencilIcon className="w-3.5 h-3.5" />
+                            <button onClick={() => onEditProduct(product)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-primary">
+                                <PencilIcon className="w-4 h-4" />
                                 Edit
                             </button>
-                            <button onClick={() => onDeleteProduct(product.id)} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-rose-500">
-                                <TrashIcon className="w-3.5 h-3.5" />
+                            <button onClick={() => onDeleteProduct(product.id)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-rose-500">
+                                <TrashIcon className="w-4 h-4" />
                                 Delete
                             </button>
                         </div>

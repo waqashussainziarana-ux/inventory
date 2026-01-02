@@ -21,15 +21,15 @@ const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders,
         <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-4 py-3 sm:py-4 px-4 text-sm sm:text-base border-t border-slate-100 last:rounded-b-lg even:bg-slate-50/50">
             <div className="text-slate-600">
                 <p className="font-semibold text-slate-800">Bulk Stock Item</p>
-                <p className="text-xs sm:text-sm">Available Quantity: {item.quantity}</p>
+                <p className="text-sm">Available Quantity: {item.quantity}</p>
             </div>
             <div className="flex justify-end items-center gap-3">
-                 <button onClick={() => onEditProduct(item)} className="flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                    <PencilIcon className="w-3.5 h-3.5" />
+                 <button onClick={() => onEditProduct(item)} className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                    <PencilIcon className="w-4 h-4" />
                     Edit
                 </button>
                 <button onClick={() => onDeleteProduct(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors" title="Delete product">
-                    <TrashIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <TrashIcon className="w-5 h-5" />
                 </button>
             </div>
         </div>
@@ -41,10 +41,10 @@ const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders,
       <div className="font-mono text-slate-800 break-all font-bold sm:text-base">{item.imei}</div>
       <div className="text-slate-600 hidden md:block">
         <p>{item.purchaseDate ? new Date(item.purchaseDate).toLocaleDateString() : 'N/A'}</p>
-        {purchaseOrder && <p className="text-[9px] sm:text-[10px] text-slate-400 font-black uppercase tracking-tight">PO: {purchaseOrder.poNumber}</p>}
+        {purchaseOrder && <p className="text-[11px] text-slate-400 font-black uppercase tracking-tight">PO: {purchaseOrder.poNumber}</p>}
       </div>
       <div className="hidden md:block">
-        <span className={`px-2 py-0.5 text-[9px] sm:text-xs font-black uppercase tracking-wider rounded-md ${item.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+        <span className={`px-2 py-0.5 text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-md ${item.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
             {item.status}
         </span>
       </div>
@@ -54,7 +54,7 @@ const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders,
                 {item.status === ProductStatus.Sold ? (
                     <div>
                         <p className="text-slate-800 font-bold truncate sm:text-base">{item.customerName || 'Walk-in Customer'}</p>
-                        <div className="text-[9px] sm:text-xs text-slate-400 font-black uppercase tracking-tight flex items-center gap-2">
+                        <div className="text-[11px] text-slate-400 font-black uppercase tracking-tight flex items-center gap-2">
                             <span>Cost: {formatCurrency(item.purchasePrice)}</span>
                             {item.invoiceId && (
                                 <>
@@ -65,15 +65,15 @@ const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders,
                         </div>
                     </div>
                 ) : (
-                    <p className="text-xs sm:text-sm text-slate-400 italic truncate">{item.notes || 'No notes provided'}</p>
+                    <p className="text-sm text-slate-400 italic truncate">{item.notes || 'No notes provided'}</p>
                 )}
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
                 <button onClick={() => onEditProduct(item)} className="p-1.5 text-slate-400 hover:text-primary transition-colors" title="Edit product">
-                    <PencilIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <PencilIcon className="w-5 h-5" />
                 </button>
                 <button onClick={() => onDeleteProduct(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors" title="Delete product">
-                    <TrashIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <TrashIcon className="w-5 h-5" />
                 </button>
             </div>
         </div>

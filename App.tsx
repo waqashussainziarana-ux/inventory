@@ -187,16 +187,16 @@ const App: React.FC = () => {
     if (syncError) return (
         <div className="flex flex-col items-center justify-center py-10 bg-rose-50 rounded-3xl border-2 border-rose-100 p-6 text-center">
             <div className="bg-rose-100 p-2 rounded-xl mb-3"><CloseIcon className="w-6 h-6 text-rose-600" /></div>
-            <p className="text-rose-600 font-black uppercase tracking-widest text-xs mb-1">Sync Failed</p>
+            <p className="text-rose-600 font-black uppercase tracking-widest text-[11px] mb-1">Sync Failed</p>
             <p className="text-slate-500 text-xs sm:text-sm max-w-xs mb-4">{syncError}</p>
-            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-[10px] sm:text-xs shadow-lg shadow-indigo-100 hover:bg-primary-hover transition-all">Retry</button>
+            <button onClick={syncAllData} className="px-6 py-2 bg-primary text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100 hover:bg-primary-hover transition-all">Retry</button>
         </div>
     );
 
     if (isLoading && products.length === 0) return (
         <div className="flex flex-col items-center justify-center py-20">
             <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p className="text-slate-400 text-xs sm:text-sm font-medium animate-pulse">Connecting...</p>
+            <p className="text-slate-400 text-sm font-medium animate-pulse">Connecting...</p>
         </div>
     );
     
@@ -230,7 +230,7 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
         <div className="sticky top-0 p-3 bg-slate-900 flex justify-between items-center z-50">
-          <span className="text-white font-bold text-xs sm:text-sm">Preview</span>
+          <span className="text-white font-bold text-sm">Preview</span>
           <button onClick={() => setDocumentToPrint(null)} className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
         </div>
         <div className="flex justify-center p-4 bg-slate-100 min-h-screen">
@@ -252,7 +252,7 @@ const App: React.FC = () => {
                         <span className="text-lg sm:text-xl font-black tracking-tight">Inventory<span className="text-primary">Track</span></span>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-4">
-                        <span className="text-[10px] sm:text-xs font-bold text-slate-500 hidden sm:block truncate max-w-[150px]">{currentUser.name || currentUser.email}</span>
+                        <span className="text-xs font-bold text-slate-500 hidden sm:block truncate max-w-[150px]">{currentUser.name || currentUser.email}</span>
                         <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-all"><LogoutIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                     </div>
                 </div>
@@ -263,19 +263,19 @@ const App: React.FC = () => {
             <section className="flex flex-col gap-6">
                 <div className="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
                     <div className="relative">
-                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-slate-400" />
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                         <input 
                             type="search" 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            placeholder="IMEI SEARCH: Type IMEI or Product Name..." 
-                            className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-9 sm:pl-11 py-2.5 sm:py-3.5 text-sm sm:text-base lg:text-lg font-medium transition-all" 
+                            placeholder="IMEI SEARCH..." 
+                            className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-10 sm:pl-11 py-3 sm:py-3.5 text-sm sm:text-base lg:text-lg font-medium transition-all" 
                         />
                     </div>
                     <div className="flex gap-2 sm:gap-3">
-                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-2.5 sm:py-3.5 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
-                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-2.5 sm:py-3.5 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
-                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-2.5 sm:py-3.5 text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
+                        <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 py-3 sm:py-3.5 text-xs lg:text-sm font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-all">PO</button>
+                        <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 py-3 sm:py-3.5 text-xs lg:text-sm font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-all">Sell</button>
+                        <button onClick={() => setAddProductModalOpen(true)} className="flex-1 py-3 sm:py-3.5 text-xs lg:text-sm font-black uppercase tracking-widest text-white bg-primary rounded-xl shadow-lg hover:bg-primary-hover transition-all">+ Stock</button>
                     </div>
                 </div>
                 <Dashboard products={products} invoices={invoices} />
@@ -283,7 +283,7 @@ const App: React.FC = () => {
 
             <section className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50/50 p-2 sm:p-4">
-                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1 sm:gap-2">
+                    <nav className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
                         {[
                           { id: 'active', label: 'Active' },
                           { id: 'sold', label: 'Sold' },
@@ -298,7 +298,7 @@ const App: React.FC = () => {
                             <button 
                               key={tab.id} 
                               onClick={() => setActiveTab(tab.id as any)} 
-                              className={`py-2 px-1 sm:px-4 sm:py-2.5 rounded-lg font-black text-[9px] sm:text-xs lg:text-sm uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                              className={`py-2.5 px-1 sm:px-4 sm:py-2.5 rounded-lg font-black text-[11px] sm:text-xs lg:text-sm uppercase tracking-wider transition-all text-center ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
                                 {tab.label}
                             </button>
