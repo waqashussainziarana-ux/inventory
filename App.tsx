@@ -22,7 +22,8 @@ import SupplierForm from './components/SupplierForm';
 import AIInsights from './components/AIInsights';
 import AuthScreen from './components/AuthScreen';
 import { supabase } from './lib/supabase';
-import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, BuildingStorefrontIcon, LogoutIcon } from './components/icons';
+// Fix: Added CloseIcon to the imports to resolve "Cannot find name 'CloseIcon'" error
+import { PlusIcon, SearchIcon, DocumentTextIcon, ClipboardDocumentListIcon, BuildingStorefrontIcon, LogoutIcon, CloseIcon } from './components/icons';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
@@ -55,7 +56,6 @@ const App: React.FC = () => {
 
   // --- Auth & Sync ---
   useEffect(() => {
-    // Initial session check
     const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -69,7 +69,8 @@ const App: React.FC = () => {
       } catch (err) {
         console.error("Session check error:", err);
       } finally {
-        setIsAuthChecking(false);
+        // Add a slight delay for better transition feel
+        setTimeout(() => setIsAuthChecking(false), 500);
       }
     };
 
@@ -131,7 +132,6 @@ const App: React.FC = () => {
     setPurchaseOrders([]);
   };
 
-  // --- CRUD Handlers (Supabase) ---
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
     const productsToAdd = details.trackingType === 'imei' 
       ? details.imeis.map((imei: string) => ({ ...productData, imei, trackingType: 'imei', quantity: 1, status: ProductStatus.Available, userId: currentUser?.id }))
@@ -147,7 +147,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
-    const { data, error } = await supabase.from('products').update(updatedProduct).eq('id', updatedProduct.id).select().single();
+    const { error } = await supabase.from('products').update(updatedProduct).eq('id', updatedProduct.id);
     if (error) alert(error.message);
     else syncAllData();
     setEditModalOpen(false);
@@ -194,7 +194,6 @@ const App: React.FC = () => {
 
     await supabase.from('invoice_items').insert(itemsToAdd);
     
-    // Update product statuses
     for (const it of items) {
         await supabase.from('products').update({ 
             status: ProductStatus.Sold, 
@@ -268,20 +267,6 @@ const App: React.FC = () => {
                         onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} 
                         onDeleteCategory={id => handleDeleteResource('categories', id)} 
                     />
-                    <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 mt-8">
-                        <h3 className="text-amber-800 font-bold mb-2">First time setup?</h3>
-                        <p className="text-amber-700 text-sm mb-4">You need to create the tables in your Supabase SQL Editor for the app to work.</p>
-                        <button 
-                            onClick={() => {
-                                const sql = `-- Paste this in Supabase SQL Editor\nCREATE TABLE products (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, "productName" TEXT, category TEXT, "purchaseDate" DATE, "purchasePrice" NUMERIC, "sellingPrice" NUMERIC, status TEXT, notes TEXT, "invoiceId" TEXT, "purchaseOrderId" TEXT, "trackingType" TEXT, imei TEXT, quantity INTEGER, "customerName" TEXT);\nCREATE TABLE customers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, name TEXT, phone TEXT);\nCREATE TABLE suppliers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, name TEXT, email TEXT, phone TEXT);\nCREATE TABLE categories (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, name TEXT);\nCREATE TABLE invoices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, "invoiceNumber" TEXT, "customerId" UUID, "customerName" TEXT, "issueDate" TIMESTAMP, "totalAmount" NUMERIC);\nCREATE TABLE invoice_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "invoiceId" UUID, "productId" UUID, "productName" TEXT, imei TEXT, quantity INTEGER, "sellingPrice" NUMERIC);\nCREATE TABLE purchase_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "userId" UUID, "poNumber" TEXT, "supplierId" UUID, "supplierName" TEXT, "issueDate" TIMESTAMP, "totalCost" NUMERIC, status TEXT, notes TEXT);`;
-                                navigator.clipboard.writeText(sql);
-                                alert("SQL Schema copied to clipboard! Paste it into your Supabase SQL Editor.");
-                            }}
-                            className="text-xs font-bold uppercase tracking-widest text-amber-900 bg-amber-200/50 px-4 py-2 rounded-lg hover:bg-amber-200"
-                        >
-                            Copy SQL Schema
-                        </button>
-                    </div>
                 </div>
             );
         default:
@@ -289,18 +274,48 @@ const App: React.FC = () => {
     }
   };
 
-  if (isAuthChecking) return <div className="min-h-screen flex items-center justify-center bg-slate-100"><div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="bg-primary p-4 rounded-[1.5rem] shadow-xl shadow-indigo-100 mb-6 animate-bounce">
+            <BuildingStorefrontIcon className="w-10 h-10 text-white" />
+        </div>
+        <div className="w-12 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div className="w-full h-full bg-primary animate-[loading_1.5s_infinite]"></div>
+        </div>
+        <style>{`
+            @keyframes loading {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+            }
+        `}</style>
+      </div>
+    );
+  }
+
   if (!currentUser) return <AuthScreen onAuthSuccess={(u) => setCurrentUser(u)} />;
 
   if (documentToPrint) {
     const documentComponent = documentToPrint.type === 'invoice'
       ? <InvoicePDF invoice={documentToPrint.data as Invoice} />
       : <PurchaseOrderPDF purchaseOrder={documentToPrint.data as PurchaseOrder} products={products} suppliers={suppliers} />;
-    return <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">{documentComponent}</div>;
+    return (
+      <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
+        <div className="sticky top-0 p-4 bg-slate-900 flex justify-between items-center z-50">
+          <span className="text-white font-bold text-sm">Preview Document</span>
+          <button onClick={() => setDocumentToPrint(null)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors">
+            <CloseIcon className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="flex justify-center p-8 bg-slate-100 min-h-screen">
+          <div className="shadow-2xl">{documentComponent}</div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/60 font-sans antialiased text-slate-900">
+    <div className="min-h-screen bg-slate-50/50 font-sans antialiased text-slate-900">
         <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-slate-200">
             <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex h-16 items-center justify-between">
@@ -309,19 +324,15 @@ const App: React.FC = () => {
                            <BuildingStorefrontIcon className="w-6 h-6 text-white" />
                         </div>
                         <span className="text-xl font-extrabold tracking-tight text-slate-800">Inventory<span className="text-primary">Track</span></span>
-                        
-                        <div className="ml-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700">
-                            Supabase Cloud
-                        </div>
                     </div>
 
                     <div className="flex items-center gap-4">
                         <div className="text-right hidden sm:block">
                             <p className="text-xs font-bold text-slate-900">{currentUser.name || currentUser.email}</p>
-                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Active Member</p>
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Workspace Member</p>
                         </div>
-                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Log Out">
-                            <LogoutIcon className="w-6 h-6" />
+                        <button onClick={handleLogout} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all" title="Log Out">
+                            <LogoutIcon className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
@@ -331,7 +342,7 @@ const App: React.FC = () => {
         <main className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
             <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 <div className="lg:col-span-8 space-y-8">
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="relative group">
                                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -341,19 +352,19 @@ const App: React.FC = () => {
                                   type="search" 
                                   value={searchQuery} 
                                   onChange={(e) => setSearchQuery(e.target.value)} 
-                                  placeholder="Search serials, models, clients..." 
-                                  className="block w-full bg-slate-50 rounded-2xl border-transparent focus:border-primary focus:ring-4 focus:ring-primary/10 pl-11 py-3 text-sm font-medium placeholder:text-slate-400 transition-all"
+                                  placeholder="Quick search products..." 
+                                  className="block w-full bg-slate-50 rounded-2xl border-transparent focus:border-primary focus:ring-4 focus:ring-primary/10 pl-11 py-3.5 text-sm font-medium transition-all"
                                 />
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl hover:bg-rose-100 transition-all active:scale-95">
-                                    <ClipboardDocumentListIcon className="w-5 h-5" /> PO
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setPurchaseOrderModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl hover:bg-rose-100 transition-all active:scale-95">
+                                    PO
                                 </button>
-                                <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-green-700 bg-green-50 border border-green-100 rounded-2xl hover:bg-green-100 transition-all active:scale-95">
-                                    <DocumentTextIcon className="w-5 h-5" /> Sell
+                                <button onClick={() => setInvoiceModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-2xl hover:bg-emerald-100 transition-all active:scale-95">
+                                    Sell
                                 </button>
-                                <button onClick={() => setAddProductModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-white bg-primary rounded-2xl shadow-lg shadow-indigo-100 hover:bg-primary-hover hover:-translate-y-0.5 transition-all active:scale-95">
-                                    <PlusIcon className="w-5 h-5" /> Stock
+                                <button onClick={() => setAddProductModalOpen(true)} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3.5 text-xs font-black uppercase tracking-widest text-white bg-primary rounded-2xl shadow-lg shadow-indigo-100 hover:bg-primary-hover hover:-translate-y-0.5 transition-all active:scale-95">
+                                    + Stock
                                 </button>
                             </div>
                         </div>
@@ -365,38 +376,39 @@ const App: React.FC = () => {
                 </div>
             </section>
 
-            <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50/30 px-6 overflow-x-auto">
+            <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
+                <div className="border-b border-slate-200 bg-slate-50/30 px-6 overflow-x-auto no-scrollbar">
                     <nav className="-mb-px flex gap-x-8">
                         {['active', 'sold', 'products', 'archive', 'invoices', 'purchaseOrders', 'customers', 'suppliers', 'categories'].map(tab => (
-                            <button key={tab} onClick={() => setActiveTab(tab as any)} className={`whitespace-nowrap py-5 px-1 border-b-2 font-bold text-sm transition-all relative ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            <button key={tab} onClick={() => setActiveTab(tab as any)} className={`whitespace-nowrap py-5 px-1 border-b-2 font-black text-[10px] uppercase tracking-widest transition-all relative ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                                {tab}
                             </button>
                         ))}
                     </nav>
                 </div>
-                <div className="p-6 min-h-[400px]">
+                <div className="p-8 min-h-[500px]">
                     {renderContent()}
                 </div>
             </section>
         </main>
 
+        {/* Modals */}
         <Modal isOpen={isAddProductModalOpen} onClose={() => setAddProductModalOpen(false)} title="Add Products">
             <ProductForm onAddProducts={handleAddProducts} existingImeis={existingImeis} onClose={() => setAddProductModalOpen(false)} categories={categories} onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} />
         </Modal>
         <Modal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Product">
             {productToEdit && <ProductEditForm product={productToEdit} onUpdateProduct={handleUpdateProduct} onClose={() => setEditModalOpen(false)} categories={categories} />}
         </Modal>
-        <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Invoice">
+        <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Sales Invoice">
             <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={(name, phone) => supabase.from('customers').insert({ name, phone, userId: currentUser?.id }).then(syncAllData)} />
         </Modal>
-        <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New PO">
+        <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New Purchase Order">
             <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={s => supabase.from('suppliers').insert({ ...s, userId: currentUser?.id }).then(syncAllData)} categories={categories} onAddCategory={name => supabase.from('categories').insert({ name, userId: currentUser?.id }).then(syncAllData)} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />
         </Modal>
-        <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer">
+        <Modal isOpen={isCustomerModalOpen} onClose={() => setCustomerModalOpen(false)} title="Customer Details">
             <CustomerForm customer={customerToEdit} onSave={c => supabase.from('customers').upsert({ ...c, id: customerToEdit?.id, userId: currentUser?.id }).then(syncAllData)} onClose={() => setCustomerModalOpen(false)} />
         </Modal>
-        <Modal isOpen={isSupplierModalOpen} onClose={() => setSupplierModalOpen(false)} title="Supplier">
+        <Modal isOpen={isSupplierModalOpen} onClose={() => setSupplierModalOpen(false)} title="Supplier Details">
             <SupplierForm supplier={supplierToEdit} onSave={s => supabase.from('suppliers').upsert({ ...s, id: supplierToEdit?.id, userId: currentUser?.id }).then(syncAllData)} onClose={() => setSupplierModalOpen(false)} />
         </Modal>
     </div>
