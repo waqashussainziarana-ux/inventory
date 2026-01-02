@@ -57,7 +57,11 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedUser = localStorage.getItem('inventory_user_data');
     if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
+      try {
+        setCurrentUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error("Session parse error", e);
+      }
     }
     setIsAuthChecking(false);
   }, []);
@@ -75,12 +79,13 @@ const App: React.FC = () => {
         api.suppliers.list()
       ]);
 
-      setProducts(p);
-      setCustomers(c);
-      setCategories(cat);
-      setInvoices(inv);
-      setPurchaseOrders(po);
-      setSuppliers(sup);
+      // Defensive validation: ensure data is array before setting state
+      if (Array.isArray(p)) setProducts(p);
+      if (Array.isArray(c)) setCustomers(c);
+      if (Array.isArray(cat)) setCategories(cat);
+      if (Array.isArray(inv)) setInvoices(inv);
+      if (Array.isArray(po)) setPurchaseOrders(po);
+      if (Array.isArray(sup)) setSuppliers(sup);
     } catch (e) {
       console.error("Sync error", e);
     } finally {
@@ -156,7 +161,7 @@ const App: React.FC = () => {
   const handleDownloadPurchaseOrder = (po: PurchaseOrder) => setDocumentToPrint({ type: 'po', data: po });
 
   const renderContent = () => {
-    if (isLoading) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+    if (isLoading && products.length === 0) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
     
     switch(activeTab) {
         case 'active':
@@ -181,7 +186,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (isAuthChecking) return null;
+  if (isAuthChecking) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   if (!currentUser) return <AuthScreen onAuthSuccess={(u) => setCurrentUser(u)} />;
 
   if (documentToPrint) {
