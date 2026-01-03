@@ -161,13 +161,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (req.method === 'POST') {
                     const { customerId, items } = req.body;
                     const newInvId = randomUUID();
+                    
+                    // Fetch customer name for historical record in invoice
                     const [customer] = await db`SELECT name FROM customers WHERE id = ${customerId} AND "userId" = ${userId}`;
+                    const customerDisplayName = customer?.name || 'Walk-in';
+
                     await db.begin(async (sql) => {
                         const total = items.reduce((s: number, i: any) => s + (Number(i.sellingPrice) * Number(i.quantity)), 0);
-                        await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "customerName", "totalAmount") VALUES (${newInvId}, ${userId}, ${'INV-'+Date.now()}, ${customerId}, ${customer?.name || 'Walk-in'}, ${total})`;
+                        
+                        // 1. Create Invoice
+                        await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "customerName", "totalAmount") 
+                                  VALUES (${newInvId}, ${userId}, ${'INV-'+Date.now()}, ${customerId || null}, ${customerDisplayName}, ${total})`;
+                        
                         for (const it of items) {
-                            await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") VALUES (${newInvId}, ${it.productId}, ${it.productName}, ${it.imei || null}, ${it.quantity}, ${it.sellingPrice})`;
-                            await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customer?.name || 'Walk-in'} WHERE id = ${it.productId} AND "userId" = ${userId}`;
+                            // 2. Record individual items sold
+                            await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") 
+                                      VALUES (${newInvId}, ${it.productId}, ${it.productName}, ${it.imei || null}, ${it.quantity}, ${it.sellingPrice})`;
+                            
+                            // 3. Update Inventory Logic
+                            const [prod] = await sql`SELECT * FROM products WHERE id = ${it.productId} AND "userId" = ${userId}`;
+                            if (prod) {
+                                if (prod.trackingType === 'imei') {
+                                    // Unique item sold: mark existing record as Sold
+                                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName} 
+                                              WHERE id = ${it.productId}`;
+                                } else {
+                                    // Bulk item sold: split quantity
+                                    const sellQty = Number(it.quantity);
+                                    const availQty = Number(prod.quantity);
+                                    
+                                    if (sellQty >= availQty) {
+                                        // Selling everything: mark entire record as Sold
+                                        await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName}, quantity = ${availQty} 
+                                                  WHERE id = ${it.productId}`;
+                                    } else {
+                                        // Selling part: reduce stock and create a Sold "clone" for history
+                                        await sql`UPDATE products SET quantity = ${availQty - sellQty} WHERE id = ${it.productId}`;
+                                        
+                                        const soldProdId = randomUUID();
+                                        // Exclude ID to let us create a new one
+                                        const { id, quantity, status, invoiceId, customerName, ...rest } = prod;
+                                        await sql`INSERT INTO products ${sql({
+                                            ...rest,
+                                            id: soldProdId,
+                                            quantity: sellQty,
+                                            status: 'Sold',
+                                            invoiceId: newInvId,
+                                            customerName: customerDisplayName
+                                        })}`;
+                                    }
+                                }
+                            }
                         }
                     });
                     return res.status(201).json({ id: newInvId });

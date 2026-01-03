@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Product, Customer, InvoiceItem } from '../types';
 import { SearchIcon, CloseIcon, PlusIcon } from './icons';
@@ -92,7 +93,14 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ availableProducts, customers,
         alert('Please select a customer and at least one product.');
         return;
     }
-    const itemsToCreate = invoiceItems.map(({productId, quantity, sellingPrice}) => ({productId, quantity, sellingPrice}));
+    // Fixed: Sending all required fields to backend
+    const itemsToCreate = invoiceItems.map(({productId, quantity, sellingPrice, productName, imei}) => ({
+        productId, 
+        quantity, 
+        sellingPrice,
+        productName,
+        imei
+    }));
     await onCreateInvoice(selectedCustomerId, itemsToCreate);
   };
 
