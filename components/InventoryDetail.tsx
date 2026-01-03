@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Product, ProductStatus, PurchaseOrder } from '../types';
-import { PencilIcon, TrashIcon } from './icons';
+import { PencilIcon, TrashIcon, DownloadIcon } from './icons';
 import Highlight from './Highlight';
 
 interface InventoryDetailProps {
@@ -9,10 +9,11 @@ interface InventoryDetailProps {
   purchaseOrders: PurchaseOrder[];
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
+  onDownloadInvoice: (invoiceId: string) => void;
   searchQuery: string;
 }
 
-const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders, onEditProduct, onDeleteProduct, searchQuery }) => {
+const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders, onEditProduct, onDeleteProduct, onDownloadInvoice, searchQuery }) => {
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
   
@@ -65,7 +66,14 @@ const InventoryDetail: React.FC<InventoryDetailProps> = ({ item, purchaseOrders,
                             {item.invoiceId && (
                                 <>
                                     <span>|</span>
-                                    <span>Inv: {item.invoiceId.split('-')[0]}...</span>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); onDownloadInvoice(item.invoiceId!); }}
+                                        className="flex items-center gap-1 text-primary hover:text-primary-hover transition-colors"
+                                        title="Download Invoice"
+                                    >
+                                        <DownloadIcon className="w-3 h-3" />
+                                        <span className="underline decoration-dotted underline-offset-2">Inv: {item.invoiceId.split('-')[0]}...</span>
+                                    </button>
                                 </>
                             )}
                         </div>

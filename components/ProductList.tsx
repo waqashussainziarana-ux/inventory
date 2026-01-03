@@ -8,6 +8,7 @@ interface ProductListProps {
   purchaseOrders: PurchaseOrder[];
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
+  onDownloadInvoice: (invoiceId: string) => void;
   listType: 'active' | 'sold' | 'search';
   searchQuery: string;
 }
@@ -15,7 +16,7 @@ interface ProductListProps {
 const getProductGroupKey = (p: Product) => 
   `${p.productName.toLowerCase().trim()}|${p.category.toLowerCase().trim()}|${p.purchasePrice}|${p.sellingPrice}|${p.trackingType}`;
 
-const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onEditProduct, onDeleteProduct, listType, searchQuery }) => {
+const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onEditProduct, onDeleteProduct, onDownloadInvoice, listType, searchQuery }) => {
   const activeProducts = products.filter(p => p.status !== ProductStatus.Archived);
 
   const filteredProducts = React.useMemo(() => {
@@ -79,6 +80,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, purchaseOrders, onE
             purchaseOrders={purchaseOrders}
             onEditProduct={onEditProduct}
             onDeleteProduct={onDeleteProduct}
+            onDownloadInvoice={onDownloadInvoice}
             searchQuery={searchQuery}
         />
       ))}

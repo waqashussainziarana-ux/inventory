@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Product, ProductStatus } from '../types';
-import { PencilIcon, TrashIcon, ArchiveBoxIcon } from './icons';
+import { PencilIcon, TrashIcon, ArchiveBoxIcon, DownloadIcon } from './icons';
 import Highlight from './Highlight';
 
 interface ProductManagementListProps {
@@ -9,6 +9,7 @@ interface ProductManagementListProps {
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onArchiveProduct: (productId: string) => void;
+  onDownloadInvoice: (invoiceId: string) => void;
   searchQuery: string;
 }
 
@@ -47,7 +48,7 @@ const useSortableData = (items: Product[], initialSortKey: SortKey = 'purchaseDa
     return { items: sortedItems, requestSort, sortKey, sortDirection };
 };
 
-const ProductManagementList: React.FC<ProductManagementListProps> = ({ products, onEditProduct, onDeleteProduct, onArchiveProduct, searchQuery }) => {
+const ProductManagementList: React.FC<ProductManagementListProps> = ({ products, onEditProduct, onDeleteProduct, onArchiveProduct, onDownloadInvoice, searchQuery }) => {
     const activeProducts = useMemo(() => {
         const base = products.filter(p => p.status !== ProductStatus.Archived);
         if (!searchQuery) return base;
@@ -116,9 +117,20 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-600 font-medium">{formatCurrency(product.purchasePrice)}</td>
                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-primary font-bold">{formatCurrency(product.sellingPrice)}</td>
                                 <td className="whitespace-nowrap px-3 py-4 text-xs">
-                                    <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-black uppercase tracking-wider ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                        {product.status}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-black uppercase tracking-wider ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            {product.status}
+                                        </span>
+                                        {product.status === ProductStatus.Sold && product.invoiceId && (
+                                            <button 
+                                                onClick={() => onDownloadInvoice(product.invoiceId!)}
+                                                className="p-1 text-primary hover:text-primary-hover"
+                                                title="Download Invoice"
+                                            >
+                                                <DownloadIcon className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0">
                                    <div className="flex items-center justify-end gap-4">
@@ -152,9 +164,20 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                                     <Highlight text={product.category} query={searchQuery} />
                                 </span>
                             </div>
-                            <span className={`px-2.5 py-1 text-xs font-black uppercase tracking-wider rounded-md ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {product.status}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`px-2.5 py-1 text-xs font-black uppercase tracking-wider rounded-md ${product.status === ProductStatus.Available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {product.status}
+                                </span>
+                                {product.status === ProductStatus.Sold && product.invoiceId && (
+                                    <button 
+                                        onClick={() => onDownloadInvoice(product.invoiceId!)}
+                                        className="p-1.5 bg-primary/10 text-primary rounded-lg"
+                                        title="Download Invoice"
+                                    >
+                                        <DownloadIcon className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
                         <div className="grid grid-cols-2 gap-3 py-4 border-y border-slate-50">

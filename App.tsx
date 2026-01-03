@@ -157,6 +157,15 @@ const App: React.FC = () => {
     } catch (err: any) { alert(err.message); }
   };
 
+  const handleDownloadInvoiceById = (invoiceId: string) => {
+    const inv = invoices.find(i => i.id === invoiceId);
+    if (inv) {
+        setDocumentToPrint({ type: 'invoice', data: inv });
+    } else {
+        alert("Invoice not found in current session. Try refreshing or check the Invoices tab.");
+    }
+  };
+
   const handleCreatePurchaseOrder = async (poDetails: any, productsData: any) => {
     try {
       await api.purchaseOrders.create({ poDetails, productsData });
@@ -213,9 +222,24 @@ const App: React.FC = () => {
     switch(activeTab) {
         case 'active':
         case 'sold':
-            return <ProductList products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} purchaseOrders={purchaseOrders} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} listType={activeTab} searchQuery={searchQuery} />;
+            return <ProductList 
+                products={activeTab === 'active' ? availableProducts : products.filter(p => p.status === ProductStatus.Sold)} 
+                purchaseOrders={purchaseOrders} 
+                onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} 
+                onDeleteProduct={handleDeleteProduct} 
+                onDownloadInvoice={handleDownloadInvoiceById}
+                listType={activeTab} 
+                searchQuery={searchQuery} 
+            />;
         case 'products':
-            return <ProductManagementList products={products.filter(p => p.status !== ProductStatus.Archived)} onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} onDeleteProduct={handleDeleteProduct} onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} searchQuery={searchQuery} />;
+            return <ProductManagementList 
+                products={products.filter(p => p.status !== ProductStatus.Archived)} 
+                onEditProduct={p => { setProductToEdit(p); setEditModalOpen(true); }} 
+                onDeleteProduct={handleDeleteProduct} 
+                onDownloadInvoice={handleDownloadInvoiceById}
+                onArchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Archived})} 
+                searchQuery={searchQuery} 
+            />;
         case 'archive':
             return <ArchivedProductList products={products.filter(p => p.status === ProductStatus.Archived)} onUnarchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Available})} onDeleteProduct={handleDeleteProduct} searchQuery={searchQuery} />;
         case 'invoices':

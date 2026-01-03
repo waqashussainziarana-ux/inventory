@@ -10,6 +10,7 @@ interface ProductGroupItemProps {
   searchQuery: string;
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
+  onDownloadInvoice: (invoiceId: string) => void;
 }
 
 const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
@@ -18,7 +19,7 @@ const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
-const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrders, searchQuery, onEditProduct, onDeleteProduct }) => {
+const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrders, searchQuery, onEditProduct, onDeleteProduct, onDownloadInvoice }) => {
   const isSearchMatch = useMemo(() => {
     if (!searchQuery) return false;
     const lowerCaseQuery = searchQuery.toLowerCase();
@@ -89,6 +90,7 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
               purchaseOrders={purchaseOrders} 
               onEditProduct={onEditProduct}
               onDeleteProduct={onDeleteProduct}
+              onDownloadInvoice={onDownloadInvoice}
               searchQuery={searchQuery}
             />
           ))}
