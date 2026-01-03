@@ -161,23 +161,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (req.method === 'POST') {
                     const { customerId, items } = req.body;
                     const newInvId = randomUUID();
+                    const invoiceNumber = 'INV-'+Date.now();
                     
                     // Fetch customer name for historical record in invoice
                     const [customer] = await db`SELECT name FROM customers WHERE id = ${customerId} AND "userId" = ${userId}`;
                     const customerDisplayName = customer?.name || 'Walk-in';
 
+                    let createdInvoice: any = null;
+
                     await db.begin(async (sql) => {
                         const total = items.reduce((s: number, i: any) => s + (Number(i.sellingPrice) * Number(i.quantity)), 0);
                         
                         // 1. Create Invoice
-                        await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "customerName", "totalAmount") 
-                                  VALUES (${newInvId}, ${userId}, ${'INV-'+Date.now()}, ${customerId || null}, ${customerDisplayName}, ${total})`;
+                        const [inv] = await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "customerName", "totalAmount") 
+                                  VALUES (${newInvId}, ${userId}, ${invoiceNumber}, ${customerId || null}, ${customerDisplayName}, ${total}) RETURNING *`;
                         
+                        createdInvoice = { ...sanitize(inv), items: [] };
+
                         for (const it of items) {
                             // 2. Record individual items sold
-                            await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") 
-                                      VALUES (${newInvId}, ${it.productId}, ${it.productName}, ${it.imei || null}, ${it.quantity}, ${it.sellingPrice})`;
+                            const [itemRecord] = await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") 
+                                      VALUES (${newInvId}, ${it.productId}, ${it.productName}, ${it.imei || null}, ${it.quantity}, ${it.sellingPrice}) RETURNING *`;
                             
+                            createdInvoice.items.push(sanitize(itemRecord));
+
                             // 3. Update Inventory Logic
                             const [prod] = await sql`SELECT * FROM products WHERE id = ${it.productId} AND "userId" = ${userId}`;
                             if (prod) {
@@ -214,7 +221,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                             }
                         }
                     });
-                    return res.status(201).json({ id: newInvId });
+                    return res.status(201).json({ id: newInvId, invoice: createdInvoice });
                 }
                 break;
 

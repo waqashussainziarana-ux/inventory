@@ -21,7 +21,8 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AuthScreen from './AuthScreen';
 import { api } from './lib/api';
-import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon } from './components/icons';
+import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon, DownloadIcon } from './components/icons';
+import { downloadPdf } from './utils/pdfGenerator';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
 
@@ -142,9 +143,17 @@ const App: React.FC = () => {
 
   const handleCreateInvoice = async (customerId: string, items: any[]) => {
     try {
-      await api.invoices.create({ customerId, items });
-      syncAllData();
+      const result = await api.invoices.create({ customerId, items });
+      await syncAllData();
       setInvoiceModalOpen(false);
+      // Automatically open the preview for the newly created invoice
+      if (result && result.invoice) {
+          setDocumentToPrint({ type: 'invoice', data: result.invoice });
+      } else if (result && result.id) {
+          // Fallback: find it in the freshly synced list if the full object wasn't returned
+          const newInvoice = invoices.find(i => i.id === result.id);
+          if (newInvoice) setDocumentToPrint({ type: 'invoice', data: newInvoice });
+      }
     } catch (err: any) { alert(err.message); }
   };
 
@@ -232,7 +241,15 @@ const App: React.FC = () => {
       <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
         <div className="sticky top-0 p-3 bg-slate-900 flex justify-between items-center z-50">
           <span className="text-white font-bold text-sm">Preview</span>
-          <button onClick={() => setDocumentToPrint(null)} className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+          <div className="flex items-center gap-3">
+              <button 
+                onClick={() => downloadPdf(documentToPrint.type === 'invoice' ? 'invoice-pdf' : 'po-pdf', `${documentToPrint.type}-${documentToPrint.data.id}.pdf`)} 
+                className="px-4 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-black uppercase tracking-widest rounded-xl flex items-center gap-2 transition-all shadow-lg"
+              >
+                  <DownloadIcon className="w-4 h-4" /> Download PDF
+              </button>
+              <button onClick={() => setDocumentToPrint(null)} className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full"><CloseIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+          </div>
         </div>
         <div className="flex justify-center p-4 bg-slate-100 min-h-screen">
           <div className="shadow-xl max-w-full overflow-x-auto">

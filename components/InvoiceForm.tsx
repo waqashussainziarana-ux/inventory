@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import { Product, Customer, InvoiceItem } from '../types';
+import { Product, Customer, InvoiceItem, Invoice } from '../types';
 import { SearchIcon, CloseIcon, PlusIcon } from './icons';
 
 interface InvoiceFormProps {
   availableProducts: Product[];
   customers: Customer[];
-  onCreateInvoice: (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => Promise<void>;
+  onCreateInvoice: (customerId: string, items: Omit<InvoiceItem, 'productName' | 'imei'>[]) => Promise<any>;
   onClose: () => void;
   onAddNewCustomer: (name: string, phone: string) => Promise<Customer | undefined>;
 }
