@@ -91,7 +91,7 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                     <thead>
                         <tr>
                             <SortableHeader sortKeyName="productName">Product</SortableHeader>
-                            <SortableHeader sortKeyName="trackingType">Identifier</SortableHeader>
+                            <SortableHeader sortKeyName="trackingType">Identifier (IMEI/SN)</SortableHeader>
                             <SortableHeader sortKeyName="quantity">Qty</SortableHeader>
                             <SortableHeader sortKeyName="purchasePrice">Cost</SortableHeader>
                             <SortableHeader sortKeyName="sellingPrice">Price</SortableHeader>
@@ -191,7 +191,7 @@ const ProductManagementList: React.FC<ProductManagementListProps> = ({ products,
                             </div>
                             {product.imei && (
                                 <div className="col-span-2 mt-1">
-                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">IMEI</p>
+                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">IMEI/SN</p>
                                     <p className="text-sm font-mono text-slate-500 break-all">
                                         <Highlight text={product.imei} query={searchQuery} />
                                     </p>

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Invoice } from '../types';
 
@@ -44,7 +45,7 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({ invoice }) => {
               <tr key={item.productId + (item.imei || '')}>
                 <td className="p-3">
                   <p className="font-semibold">{item.productName}</p>
-                  {item.imei && <p className="text-xs text-gray-500 font-mono">IMEI: {item.imei}</p>}
+                  {item.imei && <p className="text-xs text-gray-500 font-mono">IMEI/SN: {item.imei}</p>}
                 </td>
                 <td className="p-3 text-center">{item.quantity}</td>
                 <td className="p-3 text-right">{formatCurrency(item.sellingPrice)}</td>

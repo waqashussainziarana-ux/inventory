@@ -78,7 +78,7 @@ const ProductGroupItem: React.FC<ProductGroupItemProps> = ({ group, purchaseOrde
       {isExpanded && (
         <div className="bg-slate-50/50 border-t border-slate-100">
           <div className="bg-slate-100/50 px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest grid grid-cols-3 md:grid-cols-6 gap-4">
-            <div>IMEI No.</div>
+            <div>IMEI/SN No.</div>
             <div className="hidden md:block">Purchased</div>
             <div className="hidden md:block">Status</div>
             <div className="col-span-3 text-right">Details & Actions</div>

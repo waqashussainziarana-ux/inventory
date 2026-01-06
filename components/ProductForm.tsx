@@ -325,7 +325,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
               <button type="button" onClick={handleAddImei} disabled={!currentImei.trim() || !!imeiError} className="mt-1 shrink-0 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add</button>
             </div>
              <div className="pt-4 space-y-2">
-                <label htmlFor="bulkImei" className="block text-sm font-medium text-slate-700">Or Paste a List of IMEIs / SNs</label>
+                <label htmlFor="bulkImei" className="block text-sm font-medium text-slate-700">Or Paste a List of IMEI/SN Numbers</label>
                 <textarea id="bulkImei" name="bulkImei" rows={3} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm sm:text-sm" placeholder="Separate each ID with a comma, space, or new line." value={bulkImeisInput} onChange={(e) => setBulkImeisInput(e.target.value)} aria-describedby="bulk-add-status"/>
                 <div className="flex justify-between items-center gap-4 pt-1">
                     <button type="button" onClick={handleBulkAddImeis} disabled={!bulkImeisInput.trim()} className="px-4 py-2 text-sm font-medium text-white bg-primary border rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add from List</button>

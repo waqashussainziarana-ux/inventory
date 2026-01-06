@@ -40,7 +40,7 @@ const ArchivedProductList: React.FC<ArchivedProductListProps> = ({ products, onU
                     <thead>
                         <tr>
                             <th scope="col" className="px-3 py-4 text-left text-xs font-black uppercase tracking-widest text-slate-500">Product</th>
-                            <th scope="col" className="px-3 py-4 text-left text-xs font-black uppercase tracking-widest text-slate-500">Identifier</th>
+                            <th scope="col" className="px-3 py-4 text-left text-xs font-black uppercase tracking-widest text-slate-500">Identifier (IMEI/SN)</th>
                             <th scope="col" className="px-3 py-4 text-left text-xs font-black uppercase tracking-widest text-slate-500">Purchased</th>
                             <th scope="col" className="relative py-4 pl-3 pr-4 sm:pr-0"></th>
                         </tr>

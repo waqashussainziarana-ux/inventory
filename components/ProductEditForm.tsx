@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Product, ProductStatus, Category } from '../types';
 
@@ -54,7 +55,7 @@ const ProductEditForm: React.FC<ProductEditFormProps> = ({ product, categories, 
        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {formData.trackingType === 'imei' ? (
             <div>
-                <label htmlFor="imei" className="block text-sm font-medium text-slate-700">IMEI (Read-only)</label>
+                <label htmlFor="imei" className="block text-sm font-medium text-slate-700">IMEI/SN (Read-only)</label>
                 <input type="text" name="imei" id="imei" readOnly disabled className="mt-1 block w-full rounded-md border-slate-300 shadow-sm sm:text-sm bg-slate-100 text-slate-500" value={formData.imei} />
             </div>
         ) : (
