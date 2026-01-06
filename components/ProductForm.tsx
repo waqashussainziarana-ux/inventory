@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { NewProductInfo, Category, ProductStatus } from '../types';
 import { CloseIcon, BarcodeIcon, PlusIcon } from './icons';
@@ -43,9 +44,10 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
         const trimmedImei = sCode.trim();
         if (!trimmedImei) return;
         
-        const isValidImei = /^\d{14,16}$/.test(trimmedImei);
+        // Updated to allow 5-16 alphanumeric characters for SN support
+        const isValidImei = /^[a-zA-Z0-9]{5,16}$/.test(trimmedImei);
         if (!isValidImei) {
-          setScanStatus({ type: 'error', message: `Invalid IMEI format (must be 14-16 digits).` });
+          setScanStatus({ type: 'error', message: `Invalid format (must be 5-16 alphanumeric digits).` });
           return;
         }
 
@@ -69,8 +71,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             onscan.attachTo(document, {
                 onScan: handleScan,
                 reactToPaste: true,
-                // Fix: Removed 'maxLength' as it is not a valid property in onscan.js ScanOptions.
-                minLength: 14,
+                minLength: 5, // Reduced from 14 to accommodate shorter Serial Numbers
                 keyCodeMapper: (e: KeyboardEvent) => onscan.decodeKeyEvent(e),
             });
         }
@@ -129,13 +130,14 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
       setImeiError(null);
       return;
     }
-    const isValidImei = /^\d{14,16}$/.test(newImei);
+    // Updated validation regex for 5-16 alphanumeric characters
+    const isValidImei = /^[a-zA-Z0-9]{5,16}$/.test(newImei);
     if (!isValidImei) {
-      setImeiError('IMEI must be 14-16 digits.');
+      setImeiError('IMEI/SN must be 5-16 alphanumeric characters.');
     } else if (existingImeis.has(newImei)) {
-      setImeiError('This IMEI already exists in your inventory.');
+      setImeiError('This identifier already exists in your inventory.');
     } else if (imeis.includes(newImei)) {
-      setImeiError('This IMEI has already been added to this batch.');
+      setImeiError('This identifier has already been added to this batch.');
     } else {
       setImeiError(null);
     }
@@ -184,7 +186,8 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
 
     uniquePotentialImeis.forEach(imei => {
         const trimmedImei = String(imei).trim();
-        if (!/^\d{14,16}$/.test(trimmedImei)) {
+        // Updated regex check for bulk add
+        if (!/^[a-zA-Z0-9]{5,16}$/.test(trimmedImei)) {
             stats.invalid++;
         } else if (existingImeis.has(trimmedImei) || imeis.includes(trimmedImei)) {
             stats.duplicates++;
@@ -206,7 +209,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
     e.preventDefault();
 
     if (trackingType === 'imei' && imeis.length === 0) {
-      setImeiError('Please add at least one IMEI number.');
+      setImeiError('Please add at least one IMEI/SN number.');
       imeiInputRef.current?.focus();
       return;
     }
@@ -285,7 +288,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             <div className="space-y-4 sm:flex sm:items-center sm:space-y-0 sm:space-x-4">
               <div className="flex items-center">
                 <input id="imei-tracking" name="tracking-method" type="radio" checked={trackingType === 'imei'} onChange={() => setTrackingType('imei')} className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"/>
-                <label htmlFor="imei-tracking" className="ml-3 block text-sm font-medium text-slate-700">Unique IMEI</label>
+                <label htmlFor="imei-tracking" className="ml-3 block text-sm font-medium text-slate-700">IMEI / SN</label>
               </div>
               <div className="flex items-center">
                 <input id="quantity-tracking" name="tracking-method" type="radio" checked={trackingType === 'quantity'} onChange={() => setTrackingType('quantity')} className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"/>
@@ -315,15 +318,15 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             </div>
              <div className="flex items-start gap-2">
               <div className="flex-grow">
-                <label htmlFor="imei" className="sr-only">Enter IMEI</label>
-                <input ref={imeiInputRef} type="text" name="imei" id="imei" value={currentImei} onChange={handleImeiChange} onKeyDown={handleImeiKeyDown} className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${imeiError ? 'border-red-500 ring-red-500' : 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500'}`} placeholder="Enter 14-16 digit IMEI and press Add or Enter" />
+                <label htmlFor="imei" className="sr-only">Enter IMEI / SN</label>
+                <input ref={imeiInputRef} type="text" name="imei" id="imei" value={currentImei} onChange={handleImeiChange} onKeyDown={handleImeiKeyDown} className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${imeiError ? 'border-red-500 ring-red-500' : 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500'}`} placeholder="Enter 5-16 alphanumeric IMEI/SN and press Add or Enter" />
                 {imeiError && <p className="mt-1 text-sm text-red-600">{imeiError}</p>}
               </div>
               <button type="button" onClick={handleAddImei} disabled={!currentImei.trim() || !!imeiError} className="mt-1 shrink-0 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add</button>
             </div>
              <div className="pt-4 space-y-2">
-                <label htmlFor="bulkImei" className="block text-sm font-medium text-slate-700">Or Paste a List of IMEIs</label>
-                <textarea id="bulkImei" name="bulkImei" rows={3} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm sm:text-sm" placeholder="Separate each IMEI with a comma, space, or new line." value={bulkImeisInput} onChange={(e) => setBulkImeisInput(e.target.value)} aria-describedby="bulk-add-status"/>
+                <label htmlFor="bulkImei" className="block text-sm font-medium text-slate-700">Or Paste a List of IMEIs / SNs</label>
+                <textarea id="bulkImei" name="bulkImei" rows={3} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm sm:text-sm" placeholder="Separate each ID with a comma, space, or new line." value={bulkImeisInput} onChange={(e) => setBulkImeisInput(e.target.value)} aria-describedby="bulk-add-status"/>
                 <div className="flex justify-between items-center gap-4 pt-1">
                     <button type="button" onClick={handleBulkAddImeis} disabled={!bulkImeisInput.trim()} className="px-4 py-2 text-sm font-medium text-white bg-primary border rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add from List</button>
                     <div id="bulk-add-status" className="text-sm text-slate-600 text-right">
@@ -333,9 +336,9 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             </div>
              {imeis.length > 0 && (
               <div className="pt-2">
-                <h4 className="font-medium text-slate-700 text-sm">{imeis.length} IMEI(s) ready to be added:</h4>
+                <h4 className="font-medium text-slate-700 text-sm">{imeis.length} ID(s) ready to be added:</h4>
                 <ul className="mt-2 p-2 border rounded-md max-h-32 overflow-y-auto bg-white space-y-1">
-                  {imeis.map(imei => ( <li key={imei} className="flex justify-between items-center text-sm p-1.5 bg-slate-100 rounded"> <span className="font-mono text-slate-800">{imei}</span> <button type="button" onClick={() => handleRemoveImei(imei)} className="text-slate-400 hover:text-red-600" aria-label={`Remove IMEI ${imei}`}> <CloseIcon className="w-4 h-4" /> </button> </li> ))}
+                  {imeis.map(imei => ( <li key={imei} className="flex justify-between items-center text-sm p-1.5 bg-slate-100 rounded"> <span className="font-mono text-slate-800">{imei}</span> <button type="button" onClick={() => handleRemoveImei(imei)} className="text-slate-400 hover:text-red-600" aria-label={`Remove ${imei}`}> <CloseIcon className="w-4 h-4" /> </button> </li> ))}
                 </ul>
               </div>
             )}

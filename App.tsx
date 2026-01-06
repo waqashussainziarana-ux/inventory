@@ -11,6 +11,7 @@ import ProductEditForm from './components/ProductEditForm';
 import InvoiceForm from './components/InvoiceForm';
 import InvoiceList from './components/InvoiceList';
 import InvoicePDF from './components/InvoicePDF';
+import InvoiceEditForm from './components/InvoiceEditForm';
 import PurchaseOrderForm from './components/PurchaseOrderForm';
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderPDF from './components/PurchaseOrderPDF';
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   
   const [isAddProductModalOpen, setAddProductModalOpen] = useState(false);
   const [isInvoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [isInvoiceEditModalOpen, setInvoiceEditModalOpen] = useState(false);
   const [isPurchaseOrderModalOpen, setPurchaseOrderModalOpen] = useState(false);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
@@ -51,6 +53,7 @@ const App: React.FC = () => {
   const [isCategoryModalOpen, setCategoryModalOpen] = useState(false);
   
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
   const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
   const [documentToPrint, setDocumentToPrint] = useState<{ type: 'invoice' | 'po', data: Invoice | PurchaseOrder } | null>(null);
@@ -130,6 +133,14 @@ const App: React.FC = () => {
       await api.products.update(updatedProduct);
       syncAllData();
       setEditModalOpen(false);
+    } catch (err: any) { alert(err.message); }
+  };
+
+  const handleUpdateInvoice = async (id: string, customerData: { customerId: string, customerName: string }) => {
+    try {
+      await api.invoices.update(id, customerData);
+      syncAllData();
+      setInvoiceEditModalOpen(false);
     } catch (err: any) { alert(err.message); }
   };
 
@@ -243,7 +254,13 @@ const App: React.FC = () => {
         case 'archive':
             return <ArchivedProductList products={products.filter(p => p.status === ProductStatus.Archived)} onUnarchiveProduct={id => handleUpdateProduct({...products.find(p => p.id === id)!, status: ProductStatus.Available})} onDeleteProduct={handleDeleteProduct} searchQuery={searchQuery} />;
         case 'invoices':
-            return <InvoiceList invoices={invoices} products={products} searchQuery={searchQuery} onDownloadInvoice={i => setDocumentToPrint({ type: 'invoice', data: i })} />;
+            return <InvoiceList 
+                invoices={invoices} 
+                products={products} 
+                searchQuery={searchQuery} 
+                onDownloadInvoice={i => setDocumentToPrint({ type: 'invoice', data: i })} 
+                onEditInvoice={i => { setInvoiceToEdit(i); setInvoiceEditModalOpen(true); }}
+            />;
         case 'purchaseOrders':
             return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={po => setDocumentToPrint({ type: 'po', data: po })} />;
         case 'customers':
@@ -310,7 +327,7 @@ const App: React.FC = () => {
                             type="search" 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            placeholder="Search by Product Name or IMEI..." 
+                            placeholder="Search by Product Name, IMEI/SN, or Client..." 
                             className="block w-full bg-slate-50 rounded-xl border-transparent focus:border-primary pl-10 sm:pl-11 py-3.5 sm:py-4 text-sm sm:text-base lg:text-lg font-medium transition-all" 
                         />
                     </div>
@@ -359,6 +376,17 @@ const App: React.FC = () => {
         </Modal>
         <Modal isOpen={isInvoiceModalOpen} onClose={() => setInvoiceModalOpen(false)} title="New Sales Invoice">
             <InvoiceForm availableProducts={availableProducts} customers={customers} onCreateInvoice={handleCreateInvoice} onClose={() => setInvoiceModalOpen(false)} onAddNewCustomer={async (name, phone) => { const cust = await api.customers.create({ name, phone }); syncAllData(); return cust; }} />
+        </Modal>
+        <Modal isOpen={isInvoiceEditModalOpen} onClose={() => setInvoiceEditModalOpen(false)} title="Edit Invoice Details">
+            {invoiceToEdit && (
+                <InvoiceEditForm 
+                    invoice={invoiceToEdit} 
+                    customers={customers} 
+                    onUpdateInvoice={handleUpdateInvoice} 
+                    onClose={() => setInvoiceEditModalOpen(false)} 
+                    onAddNewCustomer={async (name, phone) => { const cust = await api.customers.create({ name, phone }); syncAllData(); return cust; }} 
+                />
+            )}
         </Modal>
         <Modal isOpen={isPurchaseOrderModalOpen} onClose={() => setPurchaseOrderModalOpen(false)} title="New Purchase Order">
             <PurchaseOrderForm suppliers={suppliers} onSaveSupplier={handleAddSupplier} categories={categories} onAddCategory={handleAddCategory} existingImeis={existingImeis} onCreatePurchaseOrder={handleCreatePurchaseOrder} onClose={() => setPurchaseOrderModalOpen(false)} nextPoNumber={`PO-${Date.now().toString().slice(-4)}`} />

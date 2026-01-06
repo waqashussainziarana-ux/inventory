@@ -1,13 +1,14 @@
 
 import React, { useState } from 'react';
 import { Invoice, Product } from '../types';
-import { DownloadIcon } from './icons';
+import { DownloadIcon, PencilIcon } from './icons';
 import Highlight from './Highlight';
 
 interface InvoiceListItemProps {
   invoice: Invoice;
   allProducts: Product[];
   onDownload: (invoice: Invoice) => void;
+  onEdit?: (invoice: Invoice) => void;
   searchQuery?: string;
 }
 
@@ -17,7 +18,7 @@ const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
-const InvoiceListItem: React.FC<InvoiceListItemProps> = ({ invoice, onDownload, searchQuery = '' }) => {
+const InvoiceListItem: React.FC<InvoiceListItemProps> = ({ invoice, onDownload, onEdit, searchQuery = '' }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
@@ -40,7 +41,16 @@ const InvoiceListItem: React.FC<InvoiceListItemProps> = ({ invoice, onDownload, 
             <div className="flex-1 text-left md:text-right font-black text-slate-800 text-base sm:text-lg">
                 {formatCurrency(invoice.totalAmount)}
             </div>
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-3">
+                {onEdit && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onEdit(invoice); }} 
+                        className="p-2.5 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-xl transition-all"
+                        title="Edit Invoice Details"
+                    >
+                        <PencilIcon className="w-5 h-5"/>
+                    </button>
+                )}
                 <button 
                     onClick={(e) => { e.stopPropagation(); onDownload(invoice); }} 
                     className="p-2.5 bg-slate-100 text-slate-500 hover:bg-primary hover:text-white rounded-xl transition-all"

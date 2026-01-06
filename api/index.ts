@@ -223,6 +223,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     });
                     return res.status(201).json({ id: newInvId, invoice: createdInvoice });
                 }
+                if (req.method === 'PUT') {
+                    const { id, customerId, customerName } = req.body;
+                    if (!id) return res.status(400).json({ error: 'Invoice ID is required' });
+
+                    await db.begin(async (sql) => {
+                        // 1. Update Invoice record
+                        await sql`UPDATE invoices SET "customerId" = ${customerId || null}, "customerName" = ${customerName} WHERE id = ${id} AND "userId" = ${userId}`;
+                        // 2. Update products linked to this invoice for consistent "Sold" tab views
+                        await sql`UPDATE products SET "customerName" = ${customerName} WHERE "invoiceId" = ${id} AND "userId" = ${userId}`;
+                    });
+                    return res.status(200).json({ success: true });
+                }
                 break;
 
             case 'purchase-orders':
