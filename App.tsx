@@ -22,8 +22,9 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AuthScreen from './AuthScreen';
 import { api } from './lib/api';
-import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon, DownloadIcon, UploadIcon } from './components/icons';
+import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon, DownloadIcon, UploadIcon, DocumentTextIcon, TagIcon } from './components/icons';
 import { downloadPdf } from './utils/pdfGenerator';
+import { exportToCsv, parseCsv } from './utils/csvUtils';
 
 type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers' | 'data';
 
@@ -122,7 +123,7 @@ const App: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `inventory-track-backup-${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `inventory-track-full-backup-${new Date().toISOString().split('T')[0]}.json`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -132,6 +133,37 @@ const App: React.FC = () => {
     } finally {
         setIsLoading(false);
     }
+  };
+
+  const handleExportInventoryCSV = () => {
+    const csvData = products.map(p => ({
+        'Product Name': p.productName,
+        'Category': p.category,
+        'Status': p.status,
+        'Identifier (IMEI/SN)': p.imei || 'N/A',
+        'Quantity': p.quantity,
+        'Cost (€)': p.purchasePrice,
+        'Price (€)': p.sellingPrice,
+        'Date Added': p.purchaseDate,
+        'Client': p.customerName || 'N/A',
+        'Notes': p.notes || ''
+    }));
+    exportToCsv(csvData, `inventory-list-${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const handleExportSalesCSV = () => {
+    const csvData = invoices.flatMap(inv => inv.items.map(item => ({
+        'Invoice #': inv.invoiceNumber,
+        'Date': new Date(inv.issueDate).toLocaleDateString(),
+        'Client': inv.customerName,
+        'Product': item.productName,
+        'Identifier': item.imei || 'N/A',
+        'Qty': item.quantity,
+        'Unit Price (€)': item.sellingPrice,
+        'Total (€)': item.sellingPrice * item.quantity,
+        'Invoice Total (€)': inv.totalAmount
+    })));
+    exportToCsv(csvData, `sales-report-${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,7 +192,57 @@ const App: React.FC = () => {
         }
     };
     reader.readAsText(file);
-    // Reset input so same file can be selected again
+    e.target.value = '';
+  };
+
+  const handleImportProductsCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const content = event.target?.result as string;
+            const rows = parseCsv(content);
+            
+            if (rows.length === 0) throw new Error("No data found in CSV.");
+
+            if (!confirm(`Are you sure you want to import ${rows.length} product(s) from this CSV?`)) return;
+
+            setIsLoading(true);
+            for (const row of rows) {
+                // Mapping common CSV headers to our format
+                const productName = row['Product Name'] || row['productName'] || row['Name'];
+                const category = row['Category'] || row['category'] || 'Uncategorized';
+                const purchasePrice = parseFloat(row['Cost'] || row['purchasePrice'] || row['Cost (€)'] || '0');
+                const sellingPrice = parseFloat(row['Price'] || row['sellingPrice'] || row['Price (€)'] || '0');
+                const imei = row['Identifier'] || row['imei'] || row['IMEI/SN'];
+                const quantity = parseInt(row['Quantity'] || row['quantity'] || '1');
+
+                if (productName) {
+                    await api.products.create({
+                        productName,
+                        category,
+                        purchaseDate: new Date().toISOString().split('T')[0],
+                        purchasePrice,
+                        sellingPrice,
+                        trackingType: imei ? 'imei' : 'quantity',
+                        imei,
+                        quantity,
+                        status: ProductStatus.Available
+                    });
+                }
+            }
+            await syncAllData();
+            alert("Products imported successfully.");
+            setActiveTab('products');
+        } catch (err: any) {
+            alert("CSV Import failed: " + err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    reader.readAsText(file);
     e.target.value = '';
   };
 
@@ -343,47 +425,87 @@ const App: React.FC = () => {
             return <CategoryManagement categories={categories} products={products} onAddCategory={handleAddCategory} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} searchQuery={searchQuery} />;
         case 'data':
             return (
-                <div className="max-w-4xl mx-auto py-10 space-y-10">
+                <div className="max-w-6xl mx-auto py-10 space-y-12">
                     <div className="text-center space-y-3 mb-10">
-                        <h2 className="text-3xl font-black text-slate-800 tracking-tight">Data Management</h2>
-                        <p className="text-slate-500 font-medium">Export local backups or restore your cloud database from a file.</p>
+                        <h2 className="text-4xl font-black text-slate-800 tracking-tight">Data Management</h2>
+                        <p className="text-slate-500 font-medium text-lg">Export your data for spreadsheets or maintain full cloud backups.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Export Card */}
-                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col items-center text-center">
-                            <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                <DownloadIcon className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-800 mb-2">Cloud Export</h3>
-                            <p className="text-sm text-slate-500 mb-8 flex-grow">Download all your records including products, invoices, and clients in a single JSON file.</p>
-                            <button 
-                                onClick={handleExportData}
-                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all active:scale-95"
-                            >
-                                Generate Backup
-                            </button>
+                    {/* Section 1: Spreadsheet Tools */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <DocumentTextIcon className="w-6 h-6 text-emerald-600" />
+                            <h3 className="text-xl font-black uppercase tracking-widest text-slate-800">Spreadsheet Tools (CSV)</h3>
                         </div>
-
-                        {/* Import Card */}
-                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col items-center text-center">
-                            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                <UploadIcon className="w-8 h-8" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                             {/* Inventory Export */}
+                             <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col">
+                                <h4 className="font-bold text-slate-800 mb-2">Export Inventory</h4>
+                                <p className="text-xs text-slate-500 mb-6 flex-grow">Download all products, IMEI numbers, and costs into a spreadsheet-ready CSV file.</p>
+                                <button onClick={handleExportInventoryCSV} className="w-full py-3.5 bg-emerald-50 text-emerald-700 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-100 transition-all flex items-center justify-center gap-2">
+                                    <DownloadIcon className="w-4 h-4" /> Download CSV
+                                </button>
                             </div>
-                            <h3 className="text-xl font-bold text-slate-800 mb-2">Cloud Restore</h3>
-                            <p className="text-sm text-slate-500 mb-8 flex-grow">Restore your database from a previously saved JSON file. <span className="text-rose-500 font-bold underline">Replaces all current data.</span></p>
-                            <label className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-primary-hover transition-all active:scale-95 cursor-pointer text-center">
-                                Select Backup File
-                                <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
-                            </label>
+                            {/* Sales Export */}
+                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col">
+                                <h4 className="font-bold text-slate-800 mb-2">Export Sales Report</h4>
+                                <p className="text-xs text-slate-500 mb-6 flex-grow">Generate a CSV of all sales, including customer names, product details, and totals.</p>
+                                <button onClick={handleExportSalesCSV} className="w-full py-3.5 bg-emerald-50 text-emerald-700 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-100 transition-all flex items-center justify-center gap-2">
+                                    <DownloadIcon className="w-4 h-4" /> Download CSV
+                                </button>
+                            </div>
+                            {/* Product Import */}
+                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col">
+                                <h4 className="font-bold text-slate-800 mb-2">Bulk Import Products</h4>
+                                <p className="text-xs text-slate-500 mb-6 flex-grow">Upload a CSV file to quickly add multiple products to your current inventory.</p>
+                                <label className="w-full py-3.5 bg-primary/5 text-primary rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-primary/10 transition-all cursor-pointer text-center flex items-center justify-center gap-2">
+                                    <UploadIcon className="w-4 h-4" /> Select CSV File
+                                    <input type="file" accept=".csv" onChange={handleImportProductsCSV} className="hidden" />
+                                </label>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-4">
-                        <div className="p-2 bg-white rounded-lg border border-slate-200"><CloseIcon className="w-4 h-4 text-slate-400 rotate-45" /></div>
-                        <div className="text-xs text-slate-500 leading-relaxed">
-                            <p className="font-bold text-slate-700 mb-1">Important Privacy Note:</p>
-                            Your backups are saved directly to your machine. No personal data is stored locally by the browser after export. Restoring data uses an atomic transaction to ensure your inventory remains consistent even if the upload is interrupted.
+                    {/* Section 2: Full System Backup */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <TagIcon className="w-6 h-6 text-sky-600" />
+                            <h3 className="text-xl font-black uppercase tracking-widest text-slate-800">System Backups (JSON)</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Export Card */}
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col items-center text-center">
+                                <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                    <DownloadIcon className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">Full Cloud Export</h3>
+                                <p className="text-sm text-slate-500 mb-8 flex-grow">Download a complete snapshot of your workspace (Clients, Suppliers, POs, Invoices, and Stock) for total security.</p>
+                                <button onClick={handleExportData} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all active:scale-95">
+                                    Generate JSON Backup
+                                </button>
+                            </div>
+
+                            {/* Import Card */}
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col items-center text-center">
+                                <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                    <UploadIcon className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">Full Cloud Restore</h3>
+                                <p className="text-sm text-slate-500 mb-8 flex-grow">Restore your database from a previously saved JSON file. <span className="text-rose-500 font-bold underline">Replaces all current data.</span></p>
+                                <label className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-primary-hover transition-all active:scale-95 cursor-pointer text-center">
+                                    Select JSON Backup
+                                    <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 flex items-start gap-6">
+                        <div className="p-3 bg-white rounded-xl border border-slate-200"><CloseIcon className="w-5 h-5 text-slate-400 rotate-45" /></div>
+                        <div className="text-sm text-slate-500 leading-relaxed">
+                            <p className="font-bold text-slate-700 mb-2">Format Guidelines:</p>
+                            <p className="mb-4">Use <strong>CSV</strong> for day-to-day spreadsheet analysis or bulk stocking. Use <strong>JSON</strong> for full migration or disaster recovery backups. The JSON file contains internal identifiers used to link invoices and clients, while CSV is simplified for human readability.</p>
+                            <p className="text-[11px] uppercase font-black tracking-widest text-primary opacity-80">Tip: Export a CSV Inventory often to keep a paper trail of your stock levels.</p>
                         </div>
                     </div>
                 </div>
