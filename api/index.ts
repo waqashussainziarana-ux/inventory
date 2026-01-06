@@ -94,13 +94,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const db = getDbConnection();
         await ensureTables(db);
 
-        // Standardize URL parsing
         const fullUrl = req.url || '';
         const cleanPath = fullUrl.split('?')[0].replace(/^\/api\//, '').replace(/\/$/, '');
         const parts = cleanPath.split('/');
         const resource = parts[0];
 
-        // 1. PUBLIC ROUTES
         if (resource === 'auth') {
             const endpoint = parts[1];
             if (endpoint === 'signup') {
@@ -117,13 +115,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(404).json({ error: 'Auth endpoint not found' });
         }
 
-        // 2. PROTECTED ROUTES - Check for userId
         const userId = getUserId(req);
         if (!userId) {
             return res.status(401).json({ error: 'Unauthorized: Missing User ID. Please log in again.' });
         }
 
         switch (resource) {
+            case 'backup':
+                if (req.method === 'GET') {
+                    const products = await db`SELECT * FROM products WHERE "userId" = ${userId}`;
+                    const invoices = await db`SELECT * FROM invoices WHERE "userId" = ${userId}`;
+                    const invoice_items = await db`SELECT * FROM invoice_items WHERE "invoiceId" IN (SELECT id FROM invoices WHERE "userId" = ${userId})`;
+                    const purchase_orders = await db`SELECT * FROM purchase_orders WHERE "userId" = ${userId}`;
+                    const suppliers = await db`SELECT * FROM suppliers WHERE "userId" = ${userId}`;
+                    const customers = await db`SELECT * FROM customers WHERE "userId" = ${userId}`;
+                    const categories = await db`SELECT * FROM categories WHERE "userId" = ${userId}`;
+                    
+                    return res.status(200).json({
+                        products: products.map(sanitize),
+                        invoices: invoices.map(sanitize),
+                        invoice_items: invoice_items.map(sanitize),
+                        purchase_orders: purchase_orders.map(sanitize),
+                        suppliers: suppliers.map(sanitize),
+                        customers: customers.map(sanitize),
+                        categories: categories.map(sanitize)
+                    });
+                }
+                if (req.method === 'POST') {
+                    const data = req.body;
+                    await db.begin(async (sql) => {
+                        // Order of deletion matters for FK constraints if enforced, though we use loose UUIDs mostly
+                        await sql`DELETE FROM invoice_items WHERE "invoiceId" IN (SELECT id FROM invoices WHERE "userId" = ${userId})`;
+                        await sql`DELETE FROM invoices WHERE "userId" = ${userId}`;
+                        await sql`DELETE FROM products WHERE "userId" = ${userId}`;
+                        await sql`DELETE FROM purchase_orders WHERE "userId" = ${userId}`;
+                        await sql`DELETE FROM suppliers WHERE "userId" = ${userId}`;
+                        await sql`DELETE FROM customers WHERE "userId" = ${userId}`;
+                        await sql`DELETE FROM categories WHERE "userId" = ${userId}`;
+
+                        if (data.categories?.length) await sql`INSERT INTO categories ${sql(data.categories.map((c: any) => ({ ...c, userId })))}`;
+                        if (data.customers?.length) await sql`INSERT INTO customers ${sql(data.customers.map((c: any) => ({ ...c, userId })))}`;
+                        if (data.suppliers?.length) await sql`INSERT INTO suppliers ${sql(data.suppliers.map((s: any) => ({ ...s, userId })))}`;
+                        if (data.purchase_orders?.length) await sql`INSERT INTO purchase_orders ${sql(data.purchase_orders.map((po: any) => ({ ...po, userId })))}`;
+                        if (data.products?.length) await sql`INSERT INTO products ${sql(data.products.map((p: any) => ({ ...p, userId })))}`;
+                        if (data.invoices?.length) await sql`INSERT INTO invoices ${sql(data.invoices.map((inv: any) => ({ ...inv, userId })))}`;
+                        if (data.invoice_items?.length) await sql`INSERT INTO invoice_items ${sql(data.invoice_items)}`;
+                    });
+                    return res.status(200).json({ success: true });
+                }
+                break;
+
             case 'categories':
             case 'customers':
             case 'suppliers':
@@ -162,49 +203,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     const { customerId, items } = req.body;
                     const newInvId = randomUUID();
                     const invoiceNumber = 'INV-'+Date.now();
-                    
                     const [customer] = await db`SELECT name FROM customers WHERE id = ${customerId} AND "userId" = ${userId}`;
                     const customerDisplayName = customer?.name || 'Walk-in';
-
                     let createdInvoice: any = null;
-
                     await db.begin(async (sql) => {
                         const total = items.reduce((s: number, i: any) => s + (Number(i.sellingPrice) * Number(i.quantity)), 0);
                         const [inv] = await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "customerName", "totalAmount") 
                                   VALUES (${newInvId}, ${userId}, ${invoiceNumber}, ${customerId || null}, ${customerDisplayName}, ${total}) RETURNING *`;
-                        
                         createdInvoice = { ...sanitize(inv), items: [] };
-
                         for (const it of items) {
                             const [itemRecord] = await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") 
                                       VALUES (${newInvId}, ${it.productId}, ${it.productName}, ${it.imei || null}, ${it.quantity}, ${it.sellingPrice}) RETURNING *`;
-                            
                             createdInvoice.items.push(sanitize(itemRecord));
-
                             const [prod] = await sql`SELECT * FROM products WHERE id = ${it.productId} AND "userId" = ${userId}`;
                             if (prod) {
                                 if (prod.trackingType === 'imei') {
-                                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName} 
-                                              WHERE id = ${it.productId}`;
+                                    await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName} WHERE id = ${it.productId}`;
                                 } else {
                                     const sellQty = Number(it.quantity);
                                     const availQty = Number(prod.quantity);
-                                    
                                     if (sellQty >= availQty) {
-                                        await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName}, quantity = ${availQty} 
-                                                  WHERE id = ${it.productId}`;
+                                        await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName}, quantity = ${availQty} WHERE id = ${it.productId}`;
                                     } else {
                                         await sql`UPDATE products SET quantity = ${availQty - sellQty} WHERE id = ${it.productId}`;
                                         const soldProdId = randomUUID();
                                         const { id, quantity, status, invoiceId, customerName, ...rest } = prod;
-                                        await sql`INSERT INTO products ${sql({
-                                            ...rest,
-                                            id: soldProdId,
-                                            quantity: sellQty,
-                                            status: 'Sold',
-                                            invoiceId: newInvId,
-                                            customerName: customerDisplayName
-                                        })}`;
+                                        await sql`INSERT INTO products ${sql({ ...rest, id: soldProdId, quantity: sellQty, status: 'Sold', invoiceId: newInvId, customerName: customerDisplayName })}`;
                                     }
                                 }
                             }
@@ -215,7 +239,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (req.method === 'PUT') {
                     const { id, customerId, customerName } = req.body;
                     if (!id) return res.status(400).json({ error: 'Invoice ID is required' });
-
                     await db.begin(async (sql) => {
                         await sql`UPDATE invoices SET "customerId" = ${customerId || null}, "customerName" = ${customerName} WHERE id = ${id} AND "userId" = ${userId}`;
                         await sql`UPDATE products SET "customerName" = ${customerName} WHERE "invoiceId" = ${id} AND "userId" = ${userId}`;
@@ -225,9 +248,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (req.method === 'DELETE') {
                     const { id } = req.body;
                     await db.begin(async (sql) => {
-                        // Mark unique items as Available again
                         await sql`UPDATE products SET status = 'Available', "invoiceId" = NULL, "customerName" = NULL WHERE "invoiceId" = ${id} AND "userId" = ${userId}`;
-                        // Delete the invoice (invoice_items will be deleted by CASCADE)
                         await sql`DELETE FROM invoices WHERE id = ${id} AND "userId" = ${userId}`;
                     });
                     return res.status(200).json({ success: true });
@@ -258,7 +279,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (req.method === 'DELETE') {
                     const { id } = req.body;
                     await db.begin(async (sql) => {
-                        // When deleting a PO, we delete all products associated with it to maintain integrity
                         await sql`DELETE FROM products WHERE "purchaseOrderId" = ${id} AND "userId" = ${userId}`;
                         await sql`DELETE FROM purchase_orders WHERE id = ${id} AND "userId" = ${userId}`;
                     });
@@ -266,16 +286,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
                 break;
             
-            case 'generate-insights':
-                try {
-                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const prompt = `Review inventory: ${JSON.stringify(req.body.products.slice(0, 10))}. Suggest 3 strategies.`;
-                    const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-                    return res.status(200).json({ insights: response.text });
-                } catch (e: any) {
-                    return res.status(500).json({ error: "Insight failed", details: e.message });
-                }
-
             default:
                 return res.status(404).json({ error: `Not found: ${resource}` });
         }

@@ -74,8 +74,8 @@ export const api = {
     create: (data: any) => request('/api/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string) => request('/api/purchase-orders', { method: 'DELETE', body: JSON.stringify({ id }) }),
   },
-  ai: {
-    generateInsights: (data: { products: Product[], invoices: Invoice[] }) => 
-      request('/api/generate-insights', { method: 'POST', body: JSON.stringify(data) }),
+  data: {
+    export: () => request('/api/backup'),
+    import: (payload: any) => request('/api/backup', { method: 'POST', body: JSON.stringify(payload) }),
   }
 };

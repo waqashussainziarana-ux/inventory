@@ -22,10 +22,10 @@ import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import AuthScreen from './AuthScreen';
 import { api } from './lib/api';
-import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon, DownloadIcon } from './components/icons';
+import { BuildingStorefrontIcon, LogoutIcon, CloseIcon, SearchIcon, DownloadIcon, UploadIcon } from './components/icons';
 import { downloadPdf } from './utils/pdfGenerator';
 
-type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers';
+type ActiveTab = 'active' | 'sold' | 'products' | 'archive' | 'invoices' | 'purchaseOrders' | 'customers' | 'categories' | 'suppliers' | 'data';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -112,6 +112,56 @@ const App: React.FC = () => {
     setProducts([]);
     setInvoices([]);
     setSyncError(null);
+  };
+
+  const handleExportData = async () => {
+    try {
+        setIsLoading(true);
+        const data = await api.data.export();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `inventory-track-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    } catch (err: any) {
+        alert("Export failed: " + err.message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const content = event.target?.result as string;
+            const data = JSON.parse(content);
+
+            if (!confirm("WARNING: Importing this file will PERMANENTLY REPLACE all your current cloud data. This action cannot be undone. Proceed?")) {
+                return;
+            }
+
+            setIsLoading(true);
+            await api.data.import(data);
+            await syncAllData();
+            alert("Cloud database successfully restored from backup.");
+            setActiveTab('active');
+        } catch (err: any) {
+            alert("Import failed: Ensure the file is a valid InventoryTrack backup JSON.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be selected again
+    e.target.value = '';
   };
 
   const handleAddProducts = async (productData: NewProductInfo, details: any) => {
@@ -291,6 +341,53 @@ const App: React.FC = () => {
             return <SupplierList suppliers={suppliers} purchaseOrders={purchaseOrders} onAddSupplier={() => { setSupplierToEdit(null); setSupplierModalOpen(true); }} onEdit={s => { setSupplierToEdit(s); setSupplierModalOpen(true); }} onDelete={id => api.suppliers.delete(id).then(syncAllData)} searchQuery={searchQuery} />;
         case 'categories':
             return <CategoryManagement categories={categories} products={products} onAddCategory={handleAddCategory} onDeleteCategory={id => api.categories.delete(id).then(syncAllData)} searchQuery={searchQuery} />;
+        case 'data':
+            return (
+                <div className="max-w-4xl mx-auto py-10 space-y-10">
+                    <div className="text-center space-y-3 mb-10">
+                        <h2 className="text-3xl font-black text-slate-800 tracking-tight">Data Management</h2>
+                        <p className="text-slate-500 font-medium">Export local backups or restore your cloud database from a file.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Export Card */}
+                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <DownloadIcon className="w-8 h-8" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Cloud Export</h3>
+                            <p className="text-sm text-slate-500 mb-8 flex-grow">Download all your records including products, invoices, and clients in a single JSON file.</p>
+                            <button 
+                                onClick={handleExportData}
+                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all active:scale-95"
+                            >
+                                Generate Backup
+                            </button>
+                        </div>
+
+                        {/* Import Card */}
+                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <UploadIcon className="w-8 h-8" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Cloud Restore</h3>
+                            <p className="text-sm text-slate-500 mb-8 flex-grow">Restore your database from a previously saved JSON file. <span className="text-rose-500 font-bold underline">Replaces all current data.</span></p>
+                            <label className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-primary-hover transition-all active:scale-95 cursor-pointer text-center">
+                                Select Backup File
+                                <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-4">
+                        <div className="p-2 bg-white rounded-lg border border-slate-200"><CloseIcon className="w-4 h-4 text-slate-400 rotate-45" /></div>
+                        <div className="text-xs text-slate-500 leading-relaxed">
+                            <p className="font-bold text-slate-700 mb-1">Important Privacy Note:</p>
+                            Your backups are saved directly to your machine. No personal data is stored locally by the browser after export. Restoring data uses an atomic transaction to ensure your inventory remains consistent even if the upload is interrupted.
+                        </div>
+                    </div>
+                </div>
+            );
         default:
              return <Dashboard products={products} invoices={invoices} />;
     }
@@ -325,6 +422,13 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
+        {isLoading && (
+            <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="font-black uppercase tracking-widest text-xs">Synchronizing Database...</p>
+            </div>
+        )}
+
         <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-slate-200">
             <div className="max-w-7xl mx-auto px-4">
                 <div className="flex h-14 sm:h-16 items-center justify-between">
@@ -374,7 +478,8 @@ const App: React.FC = () => {
                           { id: 'purchaseOrders', label: 'Orders' },
                           { id: 'customers', label: 'Clients' },
                           { id: 'suppliers', label: 'Suppliers' },
-                          { id: 'categories', label: 'Cats' }
+                          { id: 'categories', label: 'Cats' },
+                          { id: 'data', label: 'Data' }
                         ].map(tab => (
                             <button 
                               key={tab.id} 
