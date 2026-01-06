@@ -9,9 +9,10 @@ interface InvoiceListProps {
     searchQuery: string;
     onDownloadInvoice: (invoice: Invoice) => void;
     onEditInvoice: (invoice: Invoice) => void;
+    onDeleteInvoice: (id: string) => void;
 }
 
-const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, products, searchQuery, onDownloadInvoice, onEditInvoice }) => {
+const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, products, searchQuery, onDownloadInvoice, onEditInvoice, onDeleteInvoice }) => {
     const sortedInvoices = React.useMemo(() => {
         return [...invoices].sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
     }, [invoices]);
@@ -51,6 +52,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, products, searchQue
                     allProducts={products}
                     onDownload={onDownloadInvoice}
                     onEdit={onEditInvoice}
+                    onDelete={onDeleteInvoice}
                     searchQuery={searchQuery}
                 />
             ))}

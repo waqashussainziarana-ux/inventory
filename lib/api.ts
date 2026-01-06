@@ -67,10 +67,12 @@ export const api = {
     list: () => request('/api/invoices'),
     create: (data: any) => request('/api/invoices', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => request('/api/invoices', { method: 'PUT', body: JSON.stringify({ id, ...data }) }),
+    delete: (id: string) => request('/api/invoices', { method: 'DELETE', body: JSON.stringify({ id }) }),
   },
   purchaseOrders: {
     list: () => request('/api/purchase-orders'),
     create: (data: any) => request('/api/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) => request('/api/purchase-orders', { method: 'DELETE', body: JSON.stringify({ id }) }),
   },
   ai: {
     generateInsights: (data: { products: Product[], invoices: Invoice[] }) => 

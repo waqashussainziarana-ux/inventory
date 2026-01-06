@@ -152,16 +152,30 @@ const App: React.FC = () => {
     } catch (err: any) { alert(err.message); }
   };
 
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!confirm('Permanently delete this invoice? Associated unique items will be returned to stock.')) return;
+    try {
+      await api.invoices.delete(invoiceId);
+      syncAllData();
+    } catch (err: any) { alert(err.message); }
+  };
+
+  const handleDeletePurchaseOrder = async (poId: string) => {
+    if (!confirm('Permanently delete this purchase order? WARNING: All inventory items associated with this PO will also be deleted.')) return;
+    try {
+      await api.purchaseOrders.delete(poId);
+      syncAllData();
+    } catch (err: any) { alert(err.message); }
+  };
+
   const handleCreateInvoice = async (customerId: string, items: any[]) => {
     try {
       const result = await api.invoices.create({ customerId, items });
       await syncAllData();
       setInvoiceModalOpen(false);
-      // Automatically open the preview for the newly created invoice
       if (result && result.invoice) {
           setDocumentToPrint({ type: 'invoice', data: result.invoice });
       } else if (result && result.id) {
-          // Fallback: find it in the freshly synced list if the full object wasn't returned
           const newInvoice = invoices.find(i => i.id === result.id);
           if (newInvoice) setDocumentToPrint({ type: 'invoice', data: newInvoice });
       }
@@ -260,9 +274,17 @@ const App: React.FC = () => {
                 searchQuery={searchQuery} 
                 onDownloadInvoice={i => setDocumentToPrint({ type: 'invoice', data: i })} 
                 onEditInvoice={i => { setInvoiceToEdit(i); setInvoiceEditModalOpen(true); }}
+                onDeleteInvoice={handleDeleteInvoice}
             />;
         case 'purchaseOrders':
-            return <PurchaseOrderList purchaseOrders={purchaseOrders} products={products} suppliers={suppliers} searchQuery={searchQuery} onDownloadPurchaseOrder={po => setDocumentToPrint({ type: 'po', data: po })} />;
+            return <PurchaseOrderList 
+                purchaseOrders={purchaseOrders} 
+                products={products} 
+                suppliers={suppliers} 
+                searchQuery={searchQuery} 
+                onDownloadPurchaseOrder={po => setDocumentToPrint({ type: 'po', data: po })} 
+                onDeletePurchaseOrder={handleDeletePurchaseOrder}
+            />;
         case 'customers':
             return <CustomerList customers={customers} onEdit={c => { setCustomerToEdit(c); setCustomerModalOpen(true); }} onDelete={id => api.customers.delete(id).then(syncAllData)} onAddCustomer={() => { setCustomerToEdit(null); setCustomerModalOpen(true); }} searchQuery={searchQuery} />;
         case 'suppliers':

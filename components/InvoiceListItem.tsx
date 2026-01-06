@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Invoice, Product } from '../types';
-import { DownloadIcon, PencilIcon } from './icons';
+import { DownloadIcon, PencilIcon, TrashIcon } from './icons';
 import Highlight from './Highlight';
 
 interface InvoiceListItemProps {
@@ -9,6 +9,7 @@ interface InvoiceListItemProps {
   allProducts: Product[];
   onDownload: (invoice: Invoice) => void;
   onEdit?: (invoice: Invoice) => void;
+  onDelete?: (id: string) => void;
   searchQuery?: string;
 }
 
@@ -18,7 +19,7 @@ const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
-const InvoiceListItem: React.FC<InvoiceListItemProps> = ({ invoice, onDownload, onEdit, searchQuery = '' }) => {
+const InvoiceListItem: React.FC<InvoiceListItemProps> = ({ invoice, onDownload, onEdit, onDelete, searchQuery = '' }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
@@ -58,6 +59,15 @@ const InvoiceListItem: React.FC<InvoiceListItemProps> = ({ invoice, onDownload, 
                 >
                     <DownloadIcon className="w-5 h-5"/>
                 </button>
+                {onDelete && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(invoice.id); }} 
+                        className="p-2.5 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl transition-all"
+                        title="Delete Invoice"
+                    >
+                        <TrashIcon className="w-5 h-5"/>
+                    </button>
+                )}
                 <div className="text-slate-300 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                     <ChevronDownIcon className="w-6 h-6"/>
                 </div>

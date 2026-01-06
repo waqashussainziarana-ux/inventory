@@ -1,12 +1,14 @@
+
 import React, { useState } from 'react';
 import { PurchaseOrder, Product, Supplier } from '../types';
-import { DownloadIcon } from './icons';
+import { DownloadIcon, TrashIcon } from './icons';
 
 interface PurchaseOrderListItemProps {
   purchaseOrder: PurchaseOrder;
   products: Product[];
   suppliers: Supplier[];
   onDownload: (po: PurchaseOrder) => void;
+  onDelete?: (id: string) => void;
 }
 
 const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
@@ -15,7 +17,7 @@ const ChevronDownIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
-const PurchaseOrderListItem: React.FC<PurchaseOrderListItemProps> = ({ purchaseOrder, products, suppliers, onDownload }) => {
+const PurchaseOrderListItem: React.FC<PurchaseOrderListItemProps> = ({ purchaseOrder, products, suppliers, onDownload, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const poProducts = React.useMemo(() => {
@@ -65,6 +67,15 @@ const PurchaseOrderListItem: React.FC<PurchaseOrderListItemProps> = ({ purchaseO
               >
                   <DownloadIcon className="w-5 h-5"/>
               </button>
+              {onDelete && (
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onDelete(purchaseOrder.id); }} 
+                    className="p-2 text-rose-500 hover:text-rose-700"
+                    title="Delete Purchase Order"
+                >
+                    <TrashIcon className="w-5 h-5"/>
+                </button>
+              )}
               <div className="text-slate-400 transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                   <ChevronDownIcon className="w-5 h-5"/>
               </div>

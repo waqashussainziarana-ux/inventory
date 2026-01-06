@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { PurchaseOrder, Product, Supplier } from '../types';
 import PurchaseOrderListItem from './PurchaseOrderListItem';
@@ -8,9 +9,10 @@ interface PurchaseOrderListProps {
     suppliers: Supplier[];
     searchQuery: string;
     onDownloadPurchaseOrder: (po: PurchaseOrder) => void;
+    onDeletePurchaseOrder: (id: string) => void;
 }
 
-const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ purchaseOrders, products, suppliers, searchQuery, onDownloadPurchaseOrder }) => {
+const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ purchaseOrders, products, suppliers, searchQuery, onDownloadPurchaseOrder, onDeletePurchaseOrder }) => {
     const sortedPOs = React.useMemo(() => {
         return [...purchaseOrders].sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
     }, [purchaseOrders]);
@@ -48,6 +50,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ purchaseOrders, p
                     products={products} 
                     suppliers={suppliers}
                     onDownload={onDownloadPurchaseOrder}
+                    onDelete={onDeletePurchaseOrder}
                 />
             ))}
         </div>

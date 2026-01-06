@@ -163,7 +163,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     const newInvId = randomUUID();
                     const invoiceNumber = 'INV-'+Date.now();
                     
-                    // Fetch customer name for historical record in invoice
                     const [customer] = await db`SELECT name FROM customers WHERE id = ${customerId} AND "userId" = ${userId}`;
                     const customerDisplayName = customer?.name || 'Walk-in';
 
@@ -171,42 +170,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
                     await db.begin(async (sql) => {
                         const total = items.reduce((s: number, i: any) => s + (Number(i.sellingPrice) * Number(i.quantity)), 0);
-                        
-                        // 1. Create Invoice
                         const [inv] = await sql`INSERT INTO invoices (id, "userId", "invoiceNumber", "customerId", "customerName", "totalAmount") 
                                   VALUES (${newInvId}, ${userId}, ${invoiceNumber}, ${customerId || null}, ${customerDisplayName}, ${total}) RETURNING *`;
                         
                         createdInvoice = { ...sanitize(inv), items: [] };
 
                         for (const it of items) {
-                            // 2. Record individual items sold
                             const [itemRecord] = await sql`INSERT INTO invoice_items ("invoiceId", "productId", "productName", imei, quantity, "sellingPrice") 
                                       VALUES (${newInvId}, ${it.productId}, ${it.productName}, ${it.imei || null}, ${it.quantity}, ${it.sellingPrice}) RETURNING *`;
                             
                             createdInvoice.items.push(sanitize(itemRecord));
 
-                            // 3. Update Inventory Logic
                             const [prod] = await sql`SELECT * FROM products WHERE id = ${it.productId} AND "userId" = ${userId}`;
                             if (prod) {
                                 if (prod.trackingType === 'imei') {
-                                    // Unique item sold: mark existing record as Sold
                                     await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName} 
                                               WHERE id = ${it.productId}`;
                                 } else {
-                                    // Bulk item sold: split quantity
                                     const sellQty = Number(it.quantity);
                                     const availQty = Number(prod.quantity);
                                     
                                     if (sellQty >= availQty) {
-                                        // Selling everything: mark entire record as Sold
                                         await sql`UPDATE products SET status = 'Sold', "invoiceId" = ${newInvId}, "customerName" = ${customerDisplayName}, quantity = ${availQty} 
                                                   WHERE id = ${it.productId}`;
                                     } else {
-                                        // Selling part: reduce stock and create a Sold "clone" for history
                                         await sql`UPDATE products SET quantity = ${availQty - sellQty} WHERE id = ${it.productId}`;
-                                        
                                         const soldProdId = randomUUID();
-                                        // Exclude ID to let us create a new one
                                         const { id, quantity, status, invoiceId, customerName, ...rest } = prod;
                                         await sql`INSERT INTO products ${sql({
                                             ...rest,
@@ -228,10 +217,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     if (!id) return res.status(400).json({ error: 'Invoice ID is required' });
 
                     await db.begin(async (sql) => {
-                        // 1. Update Invoice record
                         await sql`UPDATE invoices SET "customerId" = ${customerId || null}, "customerName" = ${customerName} WHERE id = ${id} AND "userId" = ${userId}`;
-                        // 2. Update products linked to this invoice for consistent "Sold" tab views
                         await sql`UPDATE products SET "customerName" = ${customerName} WHERE "invoiceId" = ${id} AND "userId" = ${userId}`;
+                    });
+                    return res.status(200).json({ success: true });
+                }
+                if (req.method === 'DELETE') {
+                    const { id } = req.body;
+                    await db.begin(async (sql) => {
+                        // Mark unique items as Available again
+                        await sql`UPDATE products SET status = 'Available', "invoiceId" = NULL, "customerName" = NULL WHERE "invoiceId" = ${id} AND "userId" = ${userId}`;
+                        // Delete the invoice (invoice_items will be deleted by CASCADE)
+                        await sql`DELETE FROM invoices WHERE id = ${id} AND "userId" = ${userId}`;
                     });
                     return res.status(200).json({ success: true });
                 }
@@ -257,6 +254,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         }
                     });
                     return res.status(201).json({ id: newPoId });
+                }
+                if (req.method === 'DELETE') {
+                    const { id } = req.body;
+                    await db.begin(async (sql) => {
+                        // When deleting a PO, we delete all products associated with it to maintain integrity
+                        await sql`DELETE FROM products WHERE "purchaseOrderId" = ${id} AND "userId" = ${userId}`;
+                        await sql`DELETE FROM purchase_orders WHERE id = ${id} AND "userId" = ${userId}`;
+                    });
+                    return res.status(200).json({ success: true });
                 }
                 break;
             
