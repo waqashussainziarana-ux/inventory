@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Invoice } from '../types';
 
@@ -10,60 +9,92 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({ invoice }) => {
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
 
   return (
-    <div id="invoice-pdf" className="bg-white p-10 font-sans text-gray-800" style={{ width: '210mm', minHeight: '297mm', fontFamily: 'sans-serif' }}>
-      <header className="flex justify-between items-start mb-12 border-b pb-6">
+    <div id="invoice-pdf" className="bg-white p-10 font-sans text-slate-800" style={{ width: '210mm', minHeight: 'auto', boxSizing: 'border-box' }}>
+      <header className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
         <div>
-          <h1 className="text-4xl font-bold text-gray-900">INVOICE</h1>
-          <p className="text-gray-600 mt-2">Invoice Number: <span className="font-semibold">{invoice.invoiceNumber}</span></p>
-          <p className="text-gray-600">Date Issued: {new Date(invoice.issueDate).toLocaleDateString()}</p>
+          <h1 className="text-5xl font-black text-slate-900 tracking-tighter mb-4">INVOICE</h1>
+          <div className="space-y-1">
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">Document No.</p>
+            <p className="text-xl font-black text-slate-900">{invoice.invoiceNumber}</p>
+          </div>
+          <div className="mt-4 space-y-1">
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">Date Issued</p>
+            <p className="text-base font-bold">{new Date(invoice.issueDate).toLocaleDateString()}</p>
+          </div>
         </div>
         <div className="text-right">
-          <h2 className="text-2xl font-semibold text-gray-800">Gadget Wall</h2>
-          <p className="text-gray-600">Portugal</p>
-          <p className="text-gray-600">info@gadget Wall</p>
+          <h2 className="text-3xl font-black text-indigo-600 mb-2">Gadget Wall</h2>
+          <div className="text-slate-500 text-sm font-medium leading-relaxed">
+            <p>Rua Principal, 123</p>
+            <p>1000-001 Lisboa, Portugal</p>
+            <p>info@gadgetwall.pt</p>
+            <p>VAT: PT500000000</p>
+          </div>
         </div>
       </header>
 
-      <section className="mb-12">
-        <h3 className="text-lg font-semibold text-gray-500 mb-2 border-b pb-2">BILL TO</h3>
-        <p className="text-xl font-bold text-gray-900">{invoice.customerName}</p>
-        {/* Add more customer details if available, e.g., phone */}
+      <section className="mb-12 grid grid-cols-2 gap-10">
+        <div>
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Billed To</h3>
+          <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+            <p className="text-xl font-black text-slate-900">{invoice.customerName}</p>
+            {/* If you have more customer data like address, add here */}
+          </div>
+        </div>
+        <div className="flex flex-col justify-end">
+          <div className="flex justify-between border-b border-slate-100 pb-2 mb-2">
+            <span className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Payment Status</span>
+            <span className="text-emerald-600 font-black uppercase text-[10px] tracking-widest">Paid In Full</span>
+          </div>
+        </div>
       </section>
       
-      <section>
-        <table className="w-full text-left">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-sm font-semibold tracking-wide">Product Description</th>
-              <th className="p-3 text-sm font-semibold tracking-wide text-center">Quantity</th>
-              <th className="p-3 text-sm font-semibold tracking-wide text-right">Unit Price</th>
-              <th className="p-3 text-sm font-semibold tracking-wide text-right">Total</th>
+      <section className="mb-12">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-900 text-white">
+              <th className="p-4 text-xs font-black uppercase tracking-widest rounded-tl-xl">Item Description</th>
+              <th className="p-4 text-xs font-black uppercase tracking-widest text-center">Qty</th>
+              <th className="p-4 text-xs font-black uppercase tracking-widest text-right">Unit Price</th>
+              <th className="p-4 text-xs font-black uppercase tracking-widest text-right rounded-tr-xl">Total</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
-            {invoice.items.map(item => (
-              <tr key={item.productId + (item.imei || '')}>
-                <td className="p-3">
-                  <p className="font-semibold">{item.productName}</p>
-                  {item.imei && <p className="text-xs text-gray-500 font-mono">IMEI/SN: {item.imei}</p>}
+          <tbody className="divide-y divide-slate-100">
+            {invoice.items.map((item, idx) => (
+              <tr key={item.productId + (item.imei || '')} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
+                <td className="p-4">
+                  <p className="font-bold text-slate-900">{item.productName}</p>
+                  {item.imei && <p className="text-xs font-mono text-slate-500 mt-1 uppercase">IMEI/SN: {item.imei}</p>}
                 </td>
-                <td className="p-3 text-center">{item.quantity}</td>
-                <td className="p-3 text-right">{formatCurrency(item.sellingPrice)}</td>
-                <td className="p-3 text-right font-semibold">{formatCurrency(item.sellingPrice * item.quantity)}</td>
+                <td className="p-4 text-center font-bold text-slate-700">{item.quantity}</td>
+                <td className="p-4 text-right font-medium text-slate-600">{formatCurrency(item.sellingPrice)}</td>
+                <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.sellingPrice * item.quantity)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </section>
 
-      <footer className="mt-12 pt-6 border-t flex justify-end">
-        <div className="w-1/3">
-          <div className="flex justify-between text-lg">
-            <span className="font-semibold text-gray-600">Grand Total:</span>
-            <span className="font-bold text-2xl text-gray-900">{formatCurrency(invoice.totalAmount)}</span>
+      <footer className="mt-12 flex justify-end">
+        <div className="w-1/2 space-y-4">
+          <div className="flex justify-between items-center text-slate-500 text-sm font-bold uppercase tracking-widest">
+            <span>Subtotal</span>
+            <span>{formatCurrency(invoice.totalAmount)}</span>
+          </div>
+          <div className="flex justify-between items-center text-slate-500 text-sm font-bold uppercase tracking-widest pb-4 border-b border-slate-100">
+            <span>VAT (0%)</span>
+            <span>€ 0.00</span>
+          </div>
+          <div className="flex justify-between items-center pt-2">
+            <span className="text-lg font-black text-slate-900 uppercase tracking-tighter">Grand Total</span>
+            <span className="text-4xl font-black text-indigo-600 tracking-tighter">{formatCurrency(invoice.totalAmount)}</span>
           </div>
         </div>
       </footer>
+
+      <div className="mt-24 pt-12 border-t border-slate-100 text-center">
+        <p className="text-slate-400 text-xs font-medium uppercase tracking-[0.3em]">Thank you for your business</p>
+      </div>
     </div>
   );
 };

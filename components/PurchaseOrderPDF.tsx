@@ -27,47 +27,66 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
   const supplier = suppliers.find(s => s.id === purchaseOrder.supplierId);
 
   return (
-    <div id="po-pdf" className="bg-white p-10 font-sans text-gray-800" style={{ width: '210mm', minHeight: '297mm', fontFamily: 'sans-serif' }}>
-      <header className="flex justify-between items-start mb-12 border-b pb-6">
+    <div id="po-pdf" className="bg-white p-10 font-sans text-slate-800" style={{ width: '210mm', minHeight: 'auto', boxSizing: 'border-box' }}>
+      <header className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
         <div>
-          <h1 className="text-4xl font-bold text-gray-900">PURCHASE ORDER</h1>
-          <p className="text-gray-600 mt-2">PO Number: <span className="font-semibold">{purchaseOrder.poNumber}</span></p>
-          <p className="text-gray-600">Date Issued: {new Date(purchaseOrder.issueDate).toLocaleDateString()}</p>
+          <h1 className="text-5xl font-black text-slate-900 tracking-tighter mb-4">PURCHASE ORDER</h1>
+          <div className="space-y-1">
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">PO Reference</p>
+            <p className="text-xl font-black text-slate-900">{purchaseOrder.poNumber}</p>
+          </div>
+          <div className="mt-4 space-y-1">
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">Order Date</p>
+            <p className="text-base font-bold">{new Date(purchaseOrder.issueDate).toLocaleDateString()}</p>
+          </div>
         </div>
         <div className="text-right">
-          <h2 className="text-2xl font-semibold text-gray-800">Gadget Wall</h2>
-          <p className="text-gray-600">Portugal</p>
-          <p className="text-gray-600">info@gadget Wall</p>
+          <h2 className="text-3xl font-black text-indigo-600 mb-2">Gadget Wall</h2>
+          <div className="text-slate-500 text-sm font-medium leading-relaxed">
+            <p>Rua Principal, 123</p>
+            <p>1000-001 Lisboa, Portugal</p>
+            <p>info@gadgetwall.pt</p>
+          </div>
         </div>
       </header>
 
-      <section className="mb-12">
-        <h3 className="text-lg font-semibold text-gray-500 mb-2 border-b pb-2">SUPPLIER</h3>
-        <p className="text-xl font-bold text-gray-900">{supplier?.name}</p>
-        {supplier?.email && <p className="text-gray-600">{supplier.email}</p>}
-        {supplier?.phone && <p className="text-gray-600">{supplier.phone}</p>}
+      <section className="mb-12 grid grid-cols-2 gap-10">
+        <div>
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Supplier</h3>
+          <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 min-h-[100px]">
+            <p className="text-xl font-black text-slate-900">{supplier?.name}</p>
+            {supplier?.email && <p className="text-slate-500 text-sm mt-1">{supplier.email}</p>}
+            {supplier?.phone && <p className="text-slate-500 text-sm">{supplier.phone}</p>}
+          </div>
+        </div>
+        <div className="flex flex-col justify-end text-right">
+          <div className="space-y-1">
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Order Status</p>
+            <p className="text-lg font-black text-slate-900 uppercase">{purchaseOrder.status}</p>
+          </div>
+        </div>
       </section>
       
-      <section>
-        <table className="w-full text-left">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-sm font-semibold tracking-wide">Product Description</th>
-              <th className="p-3 text-sm font-semibold tracking-wide text-center">Quantity</th>
-              <th className="p-3 text-sm font-semibold tracking-wide text-right">Unit Cost</th>
-              <th className="p-3 text-sm font-semibold tracking-wide text-right">Total Cost</th>
+      <section className="mb-12">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-900 text-white">
+              <th className="p-4 text-xs font-black uppercase tracking-widest rounded-tl-xl">Product / Category</th>
+              <th className="p-4 text-xs font-black uppercase tracking-widest text-center">Qty</th>
+              <th className="p-4 text-xs font-black uppercase tracking-widest text-right">Unit Cost</th>
+              <th className="p-4 text-xs font-black uppercase tracking-widest text-right rounded-tr-xl">Subtotal</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-slate-100">
             {poProducts.map(({ item, quantity }, index) => (
-              <tr key={index}>
-                <td className="p-3">
-                  <p className="font-semibold">{item.productName}</p>
-                  <p className="text-xs text-gray-500">{item.category}</p>
+              <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
+                <td className="p-4">
+                  <p className="font-bold text-slate-900">{item.productName}</p>
+                  <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mt-0.5">{item.category}</p>
                 </td>
-                <td className="p-3 text-center">{quantity}</td>
-                <td className="p-3 text-right">{formatCurrency(item.purchasePrice)}</td>
-                <td className="p-3 text-right font-semibold">{formatCurrency(item.purchasePrice * quantity)}</td>
+                <td className="p-4 text-center font-bold text-slate-700">{quantity}</td>
+                <td className="p-4 text-right font-medium text-slate-600">{formatCurrency(item.purchasePrice)}</td>
+                <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.purchasePrice * quantity)}</td>
               </tr>
             ))}
           </tbody>
@@ -75,17 +94,23 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
       </section>
 
       {purchaseOrder.notes && (
-        <section className="mt-8">
-             <h3 className="text-lg font-semibold text-gray-500 mb-2">Notes</h3>
-             <p className="text-sm text-gray-700 p-4 bg-gray-50 border rounded-md">{purchaseOrder.notes}</p>
+        <section className="mb-12">
+             <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Notes & Instructions</h3>
+             <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 italic text-slate-600 text-sm leading-relaxed">
+                {purchaseOrder.notes}
+             </div>
         </section>
       )}
 
-      <footer className="mt-12 pt-6 border-t flex justify-end">
-        <div className="w-1/3">
-          <div className="flex justify-between text-lg">
-            <span className="font-semibold text-gray-600">Grand Total:</span>
-            <span className="font-bold text-2xl text-gray-900">{formatCurrency(purchaseOrder.totalCost)}</span>
+      <footer className="mt-12 flex justify-end">
+        <div className="w-1/2 p-8 bg-indigo-600 rounded-[2.5rem] text-white">
+          <div className="flex justify-between items-center mb-1 opacity-80 uppercase font-black text-[10px] tracking-widest">
+            <span>Total Quantity</span>
+            <span>{poProducts.reduce((s, p) => s + p.quantity, 0)} units</span>
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-white/20">
+            <span className="text-lg font-black uppercase tracking-tighter">Total PO Cost</span>
+            <span className="text-4xl font-black tracking-tighter">{formatCurrency(purchaseOrder.totalCost)}</span>
           </div>
         </div>
       </footer>
