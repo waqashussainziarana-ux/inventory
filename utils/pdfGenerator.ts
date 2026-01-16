@@ -1,9 +1,10 @@
+
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 /**
- * Generates a multi-page PDF by accurately slicing a captured canvas into A4-sized segments.
- * Uses exact A4 proportions (210mm x 297mm) and a standard web-to-print scale.
+ * Generates a multi-page PDF by accurately slicing a high-resolution canvas.
+ * Fixed the overlapping issue by ensuring the vertical offset strictly matches the PDF page height.
  */
 export const downloadPdf = async (elementId: string, fileName: string): Promise<void> => {
   const element = document.getElementById(elementId);
@@ -13,36 +14,37 @@ export const downloadPdf = async (elementId: string, fileName: string): Promise<
   }
 
   try {
-    // 1. We force the element width to a standard A4 pixel equivalent (approx 794px for 210mm)
-    // and let the height be as long as needed.
+    // Standard A4 aspect ratio is ~1.414. 
+    // We use a fixed width for the capture to make calculations predictable.
+    const captureWidth = 800; 
     const originalWidth = element.style.width;
-    element.style.width = '794px'; 
+    element.style.width = `${captureWidth}px`; 
 
     const canvas = await html2canvas(element, {
-      scale: 2, // High resolution
+      scale: 2, // 2x scale for print quality
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: 794,
+      width: captureWidth,
       onclone: (clonedDoc) => {
         const clonedElement = clonedDoc.getElementById(elementId);
         if (clonedElement) {
-          clonedElement.style.width = '794px';
+          clonedElement.style.width = `${captureWidth}px`;
         }
       }
     });
 
-    // Reset original width
+    // Reset original styles
     element.style.width = originalWidth;
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgData = canvas.toDataURL('image/jpeg', 0.98);
     
     // A4 dimensions in mm
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
 
-    // The canvas represents the full height. We need to calculate how many A4 heights that is.
+    // Calculate how many mm the full image occupies when scaled to fit the PDF width
     const imgProps = pdf.getImageProperties(imgData);
     const renderWidth = pdfWidth; 
     const renderHeight = (imgProps.height * renderWidth) / imgProps.width;
@@ -50,13 +52,14 @@ export const downloadPdf = async (elementId: string, fileName: string): Promise<
     let heightLeft = renderHeight;
     let position = 0;
 
-    // Add the first page
+    // Add first page
     pdf.addImage(imgData, 'JPEG', 0, position, renderWidth, renderHeight);
     heightLeft -= pdfHeight;
 
-    // Add subsequent pages if content exceeds one A4 page
-    while (heightLeft > 0) {
-      position -= pdfHeight; // Move the image "up" relative to the next page
+    // Add subsequent pages
+    // We use a small epsilon or floor/ceil to avoid "sliver" overlaps caused by floating point precision
+    while (heightLeft > 1) { // 1mm threshold to avoid empty last pages
+      position -= pdfHeight; 
       pdf.addPage();
       pdf.addImage(imgData, 'JPEG', 0, position, renderWidth, renderHeight);
       heightLeft -= pdfHeight;
@@ -75,6 +78,6 @@ export const downloadPdf = async (elementId: string, fileName: string): Promise<
 
   } catch (error) {
     console.error("Error generating PDF:", error);
-    alert("Failed to generate PDF. Check browser console for details.");
+    alert("An error occurred while generating the PDF. Please try a different browser or check the console.");
   }
 };
