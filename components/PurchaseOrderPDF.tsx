@@ -29,7 +29,7 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
   const supplier = suppliers.find(s => s.id === purchaseOrder.supplierId);
 
   return (
-    <div id="po-pdf" className="bg-white p-10 font-sans text-slate-800" style={{ width: '210mm', minHeight: 'auto', boxSizing: 'border-box' }}>
+    <div id="po-pdf" className="bg-white p-10 font-sans text-slate-800 mx-auto" style={{ width: '800px', minHeight: 'auto', boxSizing: 'border-box' }}>
       <header className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
         <div>
           <h1 className="text-5xl font-black text-slate-900 tracking-tighter mb-4">PURCHASE ORDER</h1>
@@ -81,7 +81,7 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
           </thead>
           <tbody className="divide-y divide-slate-100">
             {poProducts.map(({ item, quantity, imeis }, index) => (
-              <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
+              <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <td className="p-4 align-top">
                   <p className="font-bold text-slate-900">{item.productName}</p>
                   <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mt-0.5">{item.category}</p>
@@ -104,7 +104,7 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
       </section>
 
       {purchaseOrder.notes && (
-        <section className="mb-12">
+        <section className="mb-12" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
              <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Notes & Instructions</h3>
              <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 italic text-slate-600 text-sm leading-relaxed">
                 {purchaseOrder.notes}
@@ -112,7 +112,7 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
         </section>
       )}
 
-      <footer className="mt-12 flex justify-end">
+      <footer className="mt-12 pb-12 flex justify-end">
         <div className="w-1/2 p-8 bg-indigo-600 rounded-[2.5rem] text-white">
           <div className="flex justify-between items-center mb-1 opacity-80 uppercase font-black text-[10px] tracking-widest">
             <span>Total Quantity</span>

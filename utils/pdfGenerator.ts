@@ -2,8 +2,8 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 /**
- * Generates a multi-page PDF by slicing a captured canvas into A4-sized segments.
- * This is more robust than simple scaling as it preserves readability for long lists.
+ * Generates a multi-page PDF by accurately slicing a captured canvas into A4-sized segments.
+ * Uses exact A4 proportions (210mm x 297mm) and a standard web-to-print scale.
  */
 export const downloadPdf = async (elementId: string, fileName: string): Promise<void> => {
   const element = document.getElementById(elementId);
@@ -13,45 +13,56 @@ export const downloadPdf = async (elementId: string, fileName: string): Promise<
   }
 
   try {
-    // 1. Capture the element at high resolution (2x) for print quality
+    // 1. We force the element width to a standard A4 pixel equivalent (approx 794px for 210mm)
+    // and let the height be as long as needed.
+    const originalWidth = element.style.width;
+    element.style.width = '794px'; 
+
     const canvas = await html2canvas(element, {
-      scale: 2,
+      scale: 2, // High resolution
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight
+      windowWidth: 794,
+      onclone: (clonedDoc) => {
+        const clonedElement = clonedDoc.getElementById(elementId);
+        if (clonedElement) {
+          clonedElement.style.width = '794px';
+        }
+      }
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 1.0);
+    // Reset original width
+    element.style.width = originalWidth;
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     
     // A4 dimensions in mm
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
 
-    // Calculate image dimensions relative to PDF width
+    // The canvas represents the full height. We need to calculate how many A4 heights that is.
     const imgProps = pdf.getImageProperties(imgData);
-    const ratio = imgProps.width / imgProps.height;
     const renderWidth = pdfWidth; 
-    const renderHeight = renderWidth / ratio;
+    const renderHeight = (imgProps.height * renderWidth) / imgProps.width;
 
     let heightLeft = renderHeight;
     let position = 0;
 
-    // First page
+    // Add the first page
     pdf.addImage(imgData, 'JPEG', 0, position, renderWidth, renderHeight);
     heightLeft -= pdfHeight;
 
-    // 2. Loop to create subsequent pages if content overflows
+    // Add subsequent pages if content exceeds one A4 page
     while (heightLeft > 0) {
-      position = heightLeft - renderHeight; // Offset for slicing
+      position -= pdfHeight; // Move the image "up" relative to the next page
       pdf.addPage();
       pdf.addImage(imgData, 'JPEG', 0, position, renderWidth, renderHeight);
       heightLeft -= pdfHeight;
     }
 
-    // 3. Handle download via Blob for better compatibility with mobile browsers
+    // Handle download
     const pdfBlob = pdf.output('blob');
     const url = URL.createObjectURL(pdfBlob);
     const link = document.createElement('a');
@@ -64,6 +75,6 @@ export const downloadPdf = async (elementId: string, fileName: string): Promise<
 
   } catch (error) {
     console.error("Error generating PDF:", error);
-    alert("Failed to generate PDF. Please try again or check your browser permissions.");
+    alert("Failed to generate PDF. Check browser console for details.");
   }
 };

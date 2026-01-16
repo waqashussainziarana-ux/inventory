@@ -36,7 +36,7 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({ invoice }) => {
   }, [invoice.items]);
 
   return (
-    <div id="invoice-pdf" className="bg-white p-10 font-sans text-slate-800" style={{ width: '210mm', minHeight: 'auto', boxSizing: 'border-box' }}>
+    <div id="invoice-pdf" className="bg-white p-10 font-sans text-slate-800 mx-auto" style={{ width: '800px', minHeight: 'auto', boxSizing: 'border-box' }}>
       <header className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
         <div>
           <h1 className="text-5xl font-black text-slate-900 tracking-tighter mb-4">INVOICE</h1>
@@ -87,7 +87,7 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({ invoice }) => {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {groupedItems.map((group, idx) => (
-              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
+              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <td className="p-4 align-top">
                   <p className="font-bold text-slate-900">{group.productName}</p>
                   {group.imeis.length > 0 && (
@@ -125,7 +125,7 @@ const InvoicePDF: React.FC<InvoicePDFProps> = ({ invoice }) => {
         </div>
       </footer>
 
-      <div className="mt-24 pt-12 border-t border-slate-100 text-center">
+      <div className="mt-24 pt-12 pb-12 border-t border-slate-100 text-center">
         <p className="text-slate-400 text-xs font-medium uppercase tracking-[0.3em]">Thank you for your business</p>
       </div>
     </div>
