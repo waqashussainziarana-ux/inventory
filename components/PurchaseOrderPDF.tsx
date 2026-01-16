@@ -11,14 +11,16 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
   const formatCurrency = (amount: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
   
   const poProducts = React.useMemo(() => {
-    const productMap = new Map<string, { item: Product, quantity: number }>();
+    const productMap = new Map<string, { item: Product, quantity: number, imeis: string[] }>();
     products.forEach(p => {
         if (p.purchaseOrderId === purchaseOrder.id) {
-            const key = `${p.productName}-${p.purchasePrice}`;
+            const key = `${p.productName.toLowerCase()}-${p.purchasePrice}`;
             if (!productMap.has(key)) {
-                productMap.set(key, { item: p, quantity: 0 });
+                productMap.set(key, { item: p, quantity: 0, imeis: [] });
             }
-            productMap.get(key)!.quantity += p.quantity;
+            const entry = productMap.get(key)!;
+            entry.quantity += p.quantity;
+            if (p.imei) entry.imeis.push(p.imei);
         }
     });
     return Array.from(productMap.values());
@@ -78,15 +80,23 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({ purchaseOrder, prod
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {poProducts.map(({ item, quantity }, index) => (
+            {poProducts.map(({ item, quantity, imeis }, index) => (
               <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
-                <td className="p-4">
+                <td className="p-4 align-top">
                   <p className="font-bold text-slate-900">{item.productName}</p>
                   <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mt-0.5">{item.category}</p>
+                  {imeis.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block w-full mb-0.5">IMEIs / Serial Numbers:</span>
+                        <p className="text-[10px] font-mono text-slate-500 leading-relaxed bg-slate-100/50 px-2 py-1 rounded border border-slate-100">
+                            {imeis.join(', ')}
+                        </p>
+                    </div>
+                  )}
                 </td>
-                <td className="p-4 text-center font-bold text-slate-700">{quantity}</td>
-                <td className="p-4 text-right font-medium text-slate-600">{formatCurrency(item.purchasePrice)}</td>
-                <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.purchasePrice * quantity)}</td>
+                <td className="p-4 text-center font-bold text-slate-700 align-top">{quantity}</td>
+                <td className="p-4 text-right font-medium text-slate-600 align-top">{formatCurrency(item.purchasePrice)}</td>
+                <td className="p-4 text-right font-black text-slate-900 align-top">{formatCurrency(item.purchasePrice * quantity)}</td>
               </tr>
             ))}
           </tbody>
