@@ -12,6 +12,10 @@ interface ProductFormProps {
   onAddCategory: (name: string) => Promise<Category | undefined>;
 }
 
+// More permissive regex for IMEI/Serial Numbers: 3-40 chars, alphanumeric + common symbols
+const ID_VALIDATION_REGEX = /^[a-zA-Z0-9\-\/\.\_\:\ ]{3,40}$/;
+const ID_VALIDATION_MESSAGE = 'Format: 3-40 characters (letters, numbers, and - / . _ allowed).';
+
 const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis, onClose, categories, onAddCategory }) => {
   const [formData, setFormData] = useState<Omit<NewProductInfo, 'customerName'>>({
     productName: '',
@@ -44,10 +48,9 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
         const trimmedImei = sCode.trim();
         if (!trimmedImei) return;
         
-        // Updated to allow 5-16 alphanumeric characters for SN support
-        const isValidImei = /^[a-zA-Z0-9]{5,16}$/.test(trimmedImei);
+        const isValidImei = ID_VALIDATION_REGEX.test(trimmedImei);
         if (!isValidImei) {
-          setScanStatus({ type: 'error', message: `Invalid format (must be 5-16 alphanumeric digits).` });
+          setScanStatus({ type: 'error', message: `Invalid format: ${trimmedImei}` });
           return;
         }
 
@@ -71,7 +74,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
             onscan.attachTo(document, {
                 onScan: handleScan,
                 reactToPaste: true,
-                minLength: 5, // Reduced from 14 to accommodate shorter Serial Numbers
+                minLength: 3, 
                 keyCodeMapper: (e: KeyboardEvent) => onscan.decodeKeyEvent(e),
             });
         }
@@ -130,10 +133,10 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
       setImeiError(null);
       return;
     }
-    // Updated validation regex for 5-16 alphanumeric characters
-    const isValidImei = /^[a-zA-Z0-9]{5,16}$/.test(newImei);
+
+    const isValidImei = ID_VALIDATION_REGEX.test(newImei);
     if (!isValidImei) {
-      setImeiError('IMEI/SN must be 5-16 alphanumeric characters.');
+      setImeiError(ID_VALIDATION_MESSAGE);
     } else if (existingImeis.has(newImei)) {
       setImeiError('This identifier already exists in your inventory.');
     } else if (imeis.includes(newImei)) {
@@ -178,6 +181,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
   const handleBulkAddImeis = () => {
     if (!bulkImeisInput.trim()) return;
 
+    // Support comma, space, and newline as separators
     const potentialImeis = bulkImeisInput.trim().split(/[\s,;\n]+/).filter(Boolean);
     const uniquePotentialImeis = Array.from(new Set(potentialImeis));
 
@@ -186,8 +190,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
 
     uniquePotentialImeis.forEach(imei => {
         const trimmedImei = String(imei).trim();
-        // Updated regex check for bulk add
-        if (!/^[a-zA-Z0-9]{5,16}$/.test(trimmedImei)) {
+        if (!ID_VALIDATION_REGEX.test(trimmedImei)) {
             stats.invalid++;
         } else if (existingImeis.has(trimmedImei) || imeis.includes(trimmedImei)) {
             stats.duplicates++;
@@ -319,14 +322,14 @@ const ProductForm: React.FC<ProductFormProps> = ({ onAddProducts, existingImeis,
              <div className="flex items-start gap-2">
               <div className="flex-grow">
                 <label htmlFor="imei" className="sr-only">Enter IMEI / SN</label>
-                <input ref={imeiInputRef} type="text" name="imei" id="imei" value={currentImei} onChange={handleImeiChange} onKeyDown={handleImeiKeyDown} className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${imeiError ? 'border-red-500 ring-red-500' : 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500'}`} placeholder="Enter 5-16 alphanumeric IMEI/SN and press Add or Enter" />
+                <input ref={imeiInputRef} type="text" name="imei" id="imei" value={currentImei} onChange={handleImeiChange} onKeyDown={handleImeiKeyDown} className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${imeiError ? 'border-red-500 ring-red-500' : 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500'}`} placeholder="Enter identifier and press Add" />
                 {imeiError && <p className="mt-1 text-sm text-red-600">{imeiError}</p>}
               </div>
               <button type="button" onClick={handleAddImei} disabled={!currentImei.trim() || !!imeiError} className="mt-1 shrink-0 px-4 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add</button>
             </div>
              <div className="pt-4 space-y-2">
                 <label htmlFor="bulkImei" className="block text-sm font-medium text-slate-700">Or Paste a List of IMEI/SN Numbers</label>
-                <textarea id="bulkImei" name="bulkImei" rows={3} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm sm:text-sm" placeholder="Separate each ID with a comma, space, or new line." value={bulkImeisInput} onChange={(e) => setBulkImeisInput(e.target.value)} aria-describedby="bulk-add-status"/>
+                <textarea id="bulkImei" name="bulkImei" rows={3} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm sm:text-sm" placeholder="Separate multiple IDs with commas, spaces, or new lines." value={bulkImeisInput} onChange={(e) => setBulkImeisInput(e.target.value)} aria-describedby="bulk-add-status"/>
                 <div className="flex justify-between items-center gap-4 pt-1">
                     <button type="button" onClick={handleBulkAddImeis} disabled={!bulkImeisInput.trim()} className="px-4 py-2 text-sm font-medium text-white bg-primary border rounded-md shadow-sm hover:bg-primary-hover focus:outline-none disabled:opacity-50">Add from List</button>
                     <div id="bulk-add-status" className="text-sm text-slate-600 text-right">
